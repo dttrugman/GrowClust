@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2016 Daniel Trugman
+! Copyright 2017 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -29,14 +29,17 @@
 !           outfile = name of output, intepolated model (z, Vp, Vs)
 !           sfact   = Vp/Vs ratio if Vs is unlisted (set to 0.0)
 !           dz      = interpolation distance
-      subroutine vzfillin(infile, outfile, sfact, dz)
+!  Outputs: zmin    = minimum depth in input model
+!           zmax    = maximum depth in input model (also used to specify minimum bottom depth)
+!
+      subroutine vzfillin(infile, outfile, sfact, dz, zmin, zmax)
       
       implicit none
       character*100 infile,outfile
       integer npts0
       parameter (npts0=5000)
       real :: d(npts0),v(npts0,2),v0(2),buf(npts0,3)
-      real :: sfact,dz,z,z1,z2,fact
+      real :: sfact,dz,z,z1,z2,fact,zmin,zmax
       integer :: i,j,k,kk,npts,nk,iz,nz
 
       open (11,file=infile,status='old')
@@ -50,6 +53,19 @@
 21    npts=i-1
       close (11)
 
+! edited (2/18/17) to put an extra depth point at zmax km, if vzmodel isn't this deep
+!   this has the effect of making the bottom-most point specify the top of a constant layer from
+!    d(npts) to zmax 
+	  if (d(npts) < zmax) then
+	  	npts = npts + 1
+	  	d(npts) = zmax
+	  	v(npts,1) = v(npts-1,1)
+	  	v(npts,2) = v(npts-1,2)
+	  endif
+! edited (2/18/17) to return zmin and zmax
+	    zmin = d(1)
+        zmax = d(npts)
+        
 ! interpolate the input model
      kk=0
      nz = floor(d(npts)/dz)+1 ! number of interpolation pts

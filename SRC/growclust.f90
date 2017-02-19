@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2016 Daniel Trugman
+! Copyright 2017 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -21,7 +21,7 @@
 ! a hybrid, hierarchical clustering algorithm to perform relative relocation of  
 ! earthquake hypocenters based on waveform cross-correlation data. ***********************
 !-----------------------------------------------------------------------------------------
-! Daniel Trugman, December 2016
+! Daniel Trugman, February 2017
 !-----------------------------------------------------------------------------------------
 ! object file and module dependencies:
 !       input_subs.o (subroutines for handling input file I/0)
@@ -64,7 +64,8 @@ program growclust
            qdep1, qdep2, torgdif, rms, rmed, resol, frac,  &
            qdep_off, rpsavgmin, delkm, distance, &
            qdep_off1, qdep_off2, qtim_off1, qtim_off2, tavg, &
-           cdist, cdep1, cdep2, rmsmax, tsec1, tsec2, rmincut
+           cdist, cdep1, cdep2, rmsmax, tsec1, tsec2, rmincut, &
+           min_qdep, max_qdep
 
 ! generic double-precision reals           
    real(dp) :: qlat0, qlon0, qlat1, qlon1, qlat2, qlon2, qlat_off, qlon_off, &
@@ -152,7 +153,7 @@ program growclust
 ! variables for velocity model and ttables
     character(len=100) :: infile_vzmdl, vzfinefile
     character(len=100), dimension(2) :: TTtabfile
-    real :: vpvs_factor, vz_dz, plongcutP, plongcutS
+    real :: vpvs_factor, vz_dz, plongcutP, plongcutS, vzmin, vzmax
     real :: tt_dep0, tt_dep1, tt_ddep, tt_del0, tt_del1, tt_ddel
     integer :: vzinterp_type, rayparam_min
 
@@ -311,7 +312,7 @@ program growclust
     print *, ' '
     print *, 'Reading event list: ' 
     call READ_EVFILE(evlist_fmt, infile_evlist, nq0,idcusp, qyr_cat, qmon_cat, qdy_cat,  &
-    qhr_cat, qmn_cat, qsc_cat, qmag_cat, qlat_cat, qlon_cat, qdep_cat, nq)
+    qhr_cat, qmn_cat, qsc_cat, qmag_cat, qlat_cat, qlon_cat, qdep_cat, nq, min_qdep, max_qdep)
     
     ! initialize relocated positions and clustertree arrays (1 event/cluster) -----
     do i = 1, nq   
@@ -385,8 +386,24 @@ program growclust
       slon00(k) = slon(k)
       tdif00(k) = tdif(k)
       rxcor00(k) = rxcor(k)
-      dist00(k) = dist(k)  
+      dist00(k) = dist(k)
+      
+      ! quality control checks on xcor data
+      if (dist(k) > tt_del1) then
+      	  print *, 'ERROR: STATION DISTANCE', dist(k), '> tt_del1', tt_del1
+      	  print *, 'Check input files (evlist, stlist, xcordata) for errors or '
+          print *, 'increase tt_del1 in GrowClust control (.inp) file.'
+      	  ierror = 1
+      endif
+      if (tdif(k) > tdifmax) then
+          print *, 'ERROR: DIFFERENTIAL TIME', tdif(k), '> tdifmax', tdifmax
+          print *, 'Check differential time data for errors or '
+          print *, 'increase tdifmax parameter in grow_params.f90 and recompile.'
+      	  ierror = 1
+      endif
+        
    enddo
+   if (ierror == 1) stop ! stop on this error 
    
    !-----------------------------------------------------------!
    
@@ -394,7 +411,9 @@ program growclust
    print *, 'Making travel-time tables...'
    
    print *, 'Interpolating velocity model: ', trim(infile_vzmdl), '->', trim(vzfinefile)
-   call vzfillin(infile_vzmdl, vzfinefile, vpvs_factor, vz_dz)
+   vzmin = tt_dep0
+   vzmax = tt_dep1
+   call vzfillin(infile_vzmdl, vzfinefile, vpvs_factor, vz_dz, vzmin, vzmax)
    print *, ' '
    
    print *, 'Creating P-phase table: ', trim(TTtabfile(1))
@@ -405,6 +424,29 @@ program growclust
    print *, 'Creating S-phase table: ', trim(TTtabfile(2))
    call deptable(vzfinefile, 2, plongcutS, tt_dep0,tt_dep1, tt_ddep, &
      tt_del0, tt_del1, tt_ddel, TTtabfile(2)(1:100))
+     
+    ! Added 2/2017 to check event depths vs velocity model, travel time tables
+    print '(a26, f8.2, f8.2)', 'min, max event depth:', min_qdep, max_qdep
+    print '(a26, f8.2, f8.2)', 'min, max table depth:', tt_dep0, tt_dep1
+    print '(a26, f8.2, f8.2)', 'min, max vzmodel depth:', vzmin, vzmax 
+    if (min_qdep < tt_dep0) then
+    	print *, 'WARNING: min event depth < min table depth'
+    	!ierror = 1 ! allow this, but warn user (should be ok if depth is near 0)
+    endif
+    if (min_qdep < vzmin)  then
+    	print *, 'WARNING: min event depth < min vzmodel depth'
+    	!ierror = 1 ! allow this, but warn user (should be ok if depth is near 0)
+    endif
+    if (max_qdep > tt_dep1) then ! note tt_dep1 is >= vzmax
+    	print *, 'ERROR: max event depth > max table / velocity model depth'
+    	ierror = 1 ! don't allow this
+    endif
+    if (tt_dep0 < vzmin) then ! for robustness, check this as well
+    	print *, 'ERROR: min table depth < min vzmodel depth'
+    	ierror = 1
+    endif
+    if (ierror == 1) stop ! stop on this error
+    
 
    print *, '--------------------------------------------------'
    print *, ' '
@@ -493,9 +535,9 @@ program growclust
    write(16, '(a56, f6.2)') ' max median absolute residual to join clusters: ', rmedmax  
    write(16, *) '*************************************************************'
    write(16, *) ' '
-   write(16, *) '************************************   Cluster GrowLog   ***************************************'
+   write(16, *) '*************************************   Cluster GrowLog   ****************************************'
    write(16, *) ' '
-   write(16, *) ' CID1  CID2    NB1   NB2  CID    NB NPR NDT', & 
+   write(16, *) '  CID1   CID2    NB1   NB2   CID    NB NPR NDT', & 
    '   dLATC     dLONC     dDEPC     dDISTC   RMSC  RMEDC'
    
 ! --------- let's relocate best pair for test --------------------!
@@ -543,10 +585,11 @@ program growclust
    print *, 'quake 1 loc = ', qlat1, qlon1, qdep1
    print *, 'quake 2 loc = ', qlat2, qlon2, qdep2   
    print *, 'torgdif, rms, rmed, resol = ', torgdif, rms, rmed, resol
-  print *, '--------------------------------------------------'
+   print *, '--------------------------------------------------'
    print *, ' '
    print *, ' '
    
+
 ! ------------------------------------------------------------------------------------ 
 
 ! ------------------------------------------------------------------------------------
@@ -712,7 +755,7 @@ program growclust
    endif ! closing if statement on resampling for bootstrap
    
   !--------------------------------------------------------------------------!          
-   
+
    
    ! loop over pairs, starting with highest rfactor values
    do kraw = npair, 1, -1                 
@@ -822,6 +865,9 @@ program growclust
                   
                   if (abs(qtim28(npk8)) > 50.) then
                      print *, '***TIME ERROR3: ', qtim28(npk8), qtim(j8), torg(index(j8)), j8, index(j8)
+                     print *, 'LARGE ORIGIN TIME CORRECTION, LIKELY XCOR DATA OR EVLIST PROBLEM.'
+                     print *, 'CHECK CURRENT PAIR (ipair,qnum1,qnum2,evid1,evid2):', ip, i, j, idcusp11(ip), idcusp22(ip)
+                     close(16)
                      stop
                   endif                  
                enddo
@@ -852,6 +898,8 @@ program growclust
                   qtim28(npk8) = qtim(i8) - torg(index(i8)) 
                   if (abs(qtim28(npk8)) > 50.) then
                      print *, '***TIME ERROR4: ', qtim28(npk8), qtim(i8), torg(index(i8)), i8, index(i8)
+                     print *, 'LARGE ORIGIN TIME CORRECTION, LIKELY XCOR DATA OR EVLIST PROBLEM.'
+                     print *, 'CHECK CURRENT PAIR (ipair,qnum1,qnum2,evid1,evid2):', ip, i, j, idcusp11(ip), idcusp22(ip)
                      close(16)
                      stop
                   endif                                    
@@ -859,7 +907,7 @@ program growclust
             endif
             if (npr8 >= 10) exit                     !stop when we have enough events
          enddo
-!         print *, 'best connections npr8 = ', npr8
+
          if (npr8 == 0) then
             print *, '***ERROR: npr8 = 0'
             close(16)
@@ -894,9 +942,14 @@ program growclust
          ! added for robustness
           if (abs(torgdif) > 50.) then 
              print *, '***TIME ERROR5: ', torgdif, qtim18(1), qtim28(1), qtim18(npk8), qtim28(npk8)
-             print *, qlat0, qlon0, qdep0, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif, rms, rmed, resol
+             print *, 'LARGE ORIGIN TIME CORRECTION, LIKELY XCOR DATA OR EVLIST PROBLEM.'
+             print *, 'CHECK CURRENT PAIR (ipair,qnum1,qnum2,evid1,evid2):', ip, i, j, idcusp11(ip), idcusp22(ip)
+             print *, 'DIAGNOSTICS:'
+             print '(f10.5,f11.5,f8.3,f10.5,f11.5,f8.3,f10.5,f11.5,f8.3,f8.3, f8.4,f8.4,f10.7)', &
+              qlat0, qlon0, qdep0, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif, rms, rmed, resol
              do i = 1, npk8
-                print *, i, tdif8(i), ipp8(i), slat8(i), slon8(i), qlat18(i), qlon18(i), qdep18(i), qtim18(i), &
+                print '(i4,f9.4,f10.5,f11.5,f10.5,f11.5,f8.3,f8.3,f10.5,f11.5,f8.3,f8.3)', &
+                	i, tdif8(i), slat8(i), slon8(i), qlat18(i), qlon18(i), qdep18(i), qtim18(i), &
                     qlat28(i), qlon28(i), qdep28(i), qtim28(i) 
              enddo
              close(16)
@@ -985,6 +1038,8 @@ program growclust
          qtim_off1 = torg(index(i)) - torgdif/2.     !***check this
          if (abs(qtim_off1) > 50.) then
             print *, '***TIME ERROR6: ', qtim_off1, torg(index(i)), index(i), i
+            print *, 'LARGE ORIGIN TIME CORRECTION, LIKELY XCOR DATA OR EVLIST PROBLEM.'
+            print *, 'CHECK CURRENT PAIR (ipair,qnum1,qnum2,evid1,evid2):', ip, i, j, idcusp11(ip), idcusp22(ip)
             close(16)
             stop
          endif
@@ -994,7 +1049,9 @@ program growclust
          qdep_off2 = qdep2 - tdep(index(j))
          qtim_off2 = torg(index(j)) + torgdif/2.     !***check this
          if (abs(qtim_off2) > 50.) then
-            print *, '***TIME ERROR7: ', qtim_off2, torg(index(j)), index(j), j
+             print *, '***TIME ERROR7: ', qtim_off2, torg(index(j)), index(j), j
+             print *, 'LARGE ORIGIN TIME CORRECTION, LIKELY XCOR DATA OR EVLIST PROBLEM.'
+             print *, 'CHECK CURRENT PAIR (ipair,qnum1,qnum2,evid1,evid2):', ip, i, j, idcusp11(ip), idcusp22(ip)
             close(16)
             stop
          endif          
@@ -1019,6 +1076,8 @@ program growclust
                qtim(ii) = qtim(ii) + qtim_off1
                if (abs(qtim(ii)) > 50.) then
                   print *, '***TIME ERROR8: ', qtim(ii), qtim_off1, qtim_off2, torgdif
+                  print *, 'LARGE ORIGIN TIME CORRECTION, LIKELY XCOR DATA OR EVLIST PROBLEM.'
+                  print *, 'CHECK CURRENT PAIR (ipair,qnum1,qnum2,evid1,evid2):', ip, i, j, idcusp11(ip), idcusp22(ip)
                   print *, i, j, index(i), index(j), torg(index(i)), torg(index(j))
                   close(16)
                   stop
@@ -1034,6 +1093,8 @@ program growclust
                qtim(ii) = qtim(ii) + qtim_off2
                if (abs(qtim(ii)) > 50.) then
                   print *, '***TIME ERROR9: ', qtim(ii), qtim_off2, qtim_off1, torgdif
+                  print *, 'LARGE ORIGIN TIME CORRECTION, LIKELY XCOR DATA OR EVLIST PROBLEM.'
+                  print *, 'CHECK CURRENT PAIR (ipair,qnum1,qnum2,evid1,evid2):', ip, i, j, idcusp11(ip), idcusp22(ip)
                   print *, i, j, index(i), index(j), torg(index(i)), torg(index(j))
                   close(16)                  
                   stop
@@ -1069,7 +1130,7 @@ program growclust
          if (nitb == 0) then
          write (16, 166) itree, itreeold, nbranch_i, nbranch_j, itree, nbranch(itree), npr8, npk8, &
             qlat2-qlat1, qlon2-qlon1, qdep2-qdep1, distance, rms, rmed
-166      format (6i6, i3, i4, 4f10.5, 2f7.2)
+166      format (2i7, 2i6, i7, i6, i3, i4, 4f10.5, 2f7.2)
          endif       
 !         print *, 'two clusters merged ', itree, nbranch(itree), npick, ntree
       
@@ -1478,9 +1539,9 @@ program growclust
    enddo
     
    
-   write(16, *) '************************************************************************************************'
+   write(16, *) '**************************************************************************************************'
    write(16, *) ' '
-   write(16, *) '***********************************  GROWCLUST Run Summary  ************************************'
+   write(16, *) '************************************  GROWCLUST Run Summary  *************************************'
     write(16, *) ' '
    write(16, '(a55, i10)') 'Number of catalog events: ', nq
    write(16, '(a55, i10)') 'Number of relocated events: ', nreloc

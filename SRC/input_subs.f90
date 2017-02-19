@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2016 Daniel Trugman
+! Copyright 2017 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -251,14 +251,17 @@
 !           qlat_cat  =  array(len=nq) of event latitude (from input catalog)
 !           qlon_cat  =  array(len=nq) of event longitude (from input catalog)
 !           qdep_cat  =  array(len=nq) of event depth, km (from input catalog)
+!           nq        =  total number of events
+!           min_qdep  =  minimum event depth (from input catalog)
+!           max_qdep  =  maximum event depth (from input catalog)
 ! 
 !-----------------------------------------------------------------------------------------
-   subroutine READ_EVFILE(ievform, evfile, nq0,idcusp, qyr_cat, qmon_cat, &
-    qdy_cat, qhr_cat, qmn_cat, qsc_cat, qmag_cat, qlat_cat, qlon_cat, qdep_cat, nq)
+   subroutine READ_EVFILE(ievform, evfile, nq0, idcusp, qyr_cat, qmon_cat, qdy_cat, qhr_cat, &
+    qmn_cat, qsc_cat, qmag_cat, qlat_cat, qlon_cat, qdep_cat, nq, min_qdep, max_qdep)
    
    implicit none
    integer :: i, nq0, nq, ievform
-   real :: EH_cat, EZ_cat, RMS_cat
+   real :: EH_cat, EZ_cat, RMS_cat, min_qdep, max_qdep
    integer, dimension(nq0) :: idcusp
    real, dimension(nq0) ::  qdep_cat
    real (kind=8), dimension(nq0) ::  qlat_cat, qlon_cat
@@ -281,7 +284,9 @@
    open (12, file=evfile, status='old')
    print *, 'First 10 events follow: '
    
-   ! read, line by line 
+   ! read, line by line
+   min_qdep = 10000.
+   max_qdep = -10000. 
    do i = 1, nq0
    
     if (ievform == 0) then   ! evlist format
@@ -299,7 +304,6 @@
     elseif (ievform == 2) then ! growclust_cat format
      read (12, *, end=22) qyr_cat(i), qmon_cat(i), qdy_cat(i), qhr_cat(i), qmn_cat(i), &
       qsc_cat(i), idcusp(i), qlat_cat(i), qlon_cat(i), qdep_cat(i), qmag_cat(i)
-!860   format (i4, 4i3, f7.3, i10, f10.5, f11.5, f8.3, f6.2)
 
     elseif (ievform == 3) then ! hypoinverse format
     ! example: 554488 2016 08 04 10 22 50.57 40.125500 -120.206333 12.07 0.04 1.00 1.13 0.29
@@ -310,6 +314,10 @@
     
     endif
     
+    ! update min, max depth
+    if (qdep_cat(i) > max_qdep) max_qdep = qdep_cat(i)
+    if (qdep_cat(i) < min_qdep) min_qdep = qdep_cat(i)
+    
     ! print 1st 10 events
     if (i < 11) print 8, idcusp(i), qyr_cat(i), qmon_cat(i), qdy_cat(i), qhr_cat(i), &
              qmn_cat(i), qsc_cat(i), evtype, qmag_cat(i), qmagtype, &
@@ -317,7 +325,10 @@
               
    enddo
    i = nq0 + 1
-   print *, '***Warning: more events than array dimension'
+   print *, '***ERROR: more events than allowed by nq0!'
+   print *, 'Ending program'
+   close(12)
+   stop
 22 nq = i - 1
   close(12)
 
@@ -525,8 +536,8 @@
         npair = 0
         nk = 0
         kk = 0
-      npair_cut = 0
-     nk_cut = 0
+        npair_cut = 0
+        nk_cut = 0
        print *, 'Selecting data from binary file...'
        
        print *, 'Selection parameters:'
@@ -606,16 +617,28 @@
           
               ! index2(npair) gives the end index for this pair in the tdif arrays
               index2(npair) = k2  
+              
         else
-          npair_cut = npair_cut+1 ! count number of cut pairs
+          npair_cut = npair_cut+1 ! increment counted number of cut pairs
+          
+          ! increment counted number of cut differential times
+          kk = 0 
+          do k = ix1, ix2
+          kk = kk+1
+             if (keepkk_pr(kk) > 0) then
+                keepkk_pr(kk) = 0
+                nk_cut = nk_cut + 1
+             endif
+          enddo
+          
         endif  ! endif on goodpair
           
             
     enddo ! enddo on event pairs -------------
     
-    ! print numbers kept
+    ! print numbers kept and cut
     nk = k2
-    print *, 'npair, nk = ', npair, nk
+    print *, 'npair_kept, nk_kept = ', npair, nk !
     print *, 'npair_cut, nk_cut = ', npair_cut, nk_cut 
        
     ! get station locations
@@ -686,8 +709,18 @@
           index2(npair) = k2  
         
         elseif (j > 1) then ! skip first entry
-           npair_cut = npair_cut + 1 ! cut this pair
-           !print *, 'Cutting pair: ', npair
+    
+           
+          npair_cut = npair_cut+1 ! increment counted number of cut pairs
+          
+          ! increment counted number of cut differential times
+             do k = 1, kk
+            	if (keepkk_pr(k)>0) then
+            		keepkk_pr(k) = 0
+            		nk_cut = nk_cut + 1
+            	endif
+            enddo
+           
         
         endif  ! endif on goodpair
         
@@ -854,10 +887,15 @@
           ! index2(npair) gives the end index for this pair in the tdif arrays
           index2(npair) = k2   
         
-          else
+          else ! cut pair and update npair_cut, nk_cut
              npair_cut = npair_cut + 1
-             !print *, 'Cutting pair:', npair
-        
+             do k = 1, kk
+            	if (keepkk_pr(k)>0) then
+            		keepkk_pr(k) = 0
+            		nk_cut = nk_cut + 1
+            	endif
+            enddo
+         
           endif  ! endif on goodpair
           
        

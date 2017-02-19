@@ -26,15 +26,15 @@
    MODULE grow_params
    
    ! ----------- Array size parameters ----------------------------------
-   integer, parameter :: nsta0=500            !max number of stations
-   integer, parameter :: nq0=80000           !max number of quakes
+   integer, parameter :: nsta0=2500            !max number of stations
+   integer, parameter :: nq0=150000           !max number of quakes
    integer, parameter :: npair0=2000000        !max total number of event pairs
-   integer, parameter :: ntmax=80000           !maximum number of trees (clusters), normally should be same as nq0
-   integer, parameter :: nbmax=10000           !max number of events (branches) per tree
+   integer, parameter :: ntmax=150000           !maximum number of trees (clusters), normally should be same as nq0
+   integer, parameter :: nbmax=150000           !max number of events (branches) per tree, should be of order nq0
    integer, parameter :: n0=1000              !max number of differential times for each event pair
    integer, parameter :: ndif0=9999999        !max total number of differential times
    integer, parameter :: n08 = 10000          !max number of diff. times for 10 event pairs
-   integer, parameter :: maxboot = 300        ! max number of bootstrap resamples
+   integer, parameter :: maxboot = 150        ! max number of bootstrap resamples
 
     ! ------- GrowClust algorithm control parameters -------------------------------
    real, parameter    :: conparam = 0.01        ! minimum connection fraction to join clusters
@@ -49,6 +49,7 @@
    real, parameter    :: boxwid = 3. ! initial "shrinking-box" width (km)
    integer, parameter :: nit = 20 ! number of iterations
    integer, parameter :: irelonorm = 1 ! relocation norm (L1 norm=1, L2 norm=2, 3=robust L2)
+   real, parameter    :: tdifmax = 30. ! maximum differential time value allowed (for error-checking on xcor data input)
    
    ! -------- Bootstrap resampling parameters -------------------
    integer, parameter  :: iseed = 0 ! random number seed
