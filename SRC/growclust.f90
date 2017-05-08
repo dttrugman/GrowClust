@@ -939,6 +939,12 @@ program growclust
 !         print *, 'DIFCLUST: ',qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, cdist, torgdif, rms, rmed, resol
 
 
+		! added for robustness: reject cluster merger for negative cluster centroid depths
+		  if (qdep1 < tt_dep0 .or. qdep2 < tt_dep0) then 
+			 print *, '***rejecting cluster merger (negative depth) ', cdist, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif
+			 cycle
+		  endif
+
          ! added for robustness
           if (abs(torgdif) > 50.) then 
              print *, '***TIME ERROR5: ', torgdif, qtim18(1), qtim28(1), qtim18(npk8), qtim28(npk8)
