@@ -66,28 +66,28 @@
 	    zmin = d(1)
         zmax = d(npts)
         
-! interpolate the input model
+! interpolate the input model, while preserving layer interfaces
      kk=0
      nz = floor(d(npts)/dz)+1 ! number of interpolation pts
      do iz=1,nz
-         z = (iz-1)*dz
-         do i=1,npts-1
-            z1=d(i)
-            z2=d(i+1)
-            if (z1.le.z.and.z2.ge.z) then
-               if (z1.eq.z2) then
+         z = (iz-1)*dz ! interpolation point
+         do i=1,npts-1 ! loop over velocity model layers
+            z1=d(i) ! top layer
+            z2=d(i+1) ! bottom layer
+            if (z1.le.z.and.z2.ge.z) then ! match with interpolation pt 
+               if (z1.eq.z2) then ! layer interface
                   fact=0.
-               else
+               else               ! not an interface: interpolate
                   fact=(z-z1)/(z2-z1)
                end if
                do j=1,2
-                  v0(j)=v(i,j)+fact*(v(i+1,j)-v(i,j))
+                  v0(j)=v(i,j)+fact*(v(i+1,j)-v(i,j)) ! compute v at interpolation point
                enddo
+               ! format output buffer
                kk=kk+1
                buf(kk,1)=z
                buf(kk,2)=v0(1)
                buf(kk,3)=v0(2)               
-!               write (12,33) z,(v0(j),j=1,2)
 33             format (f10.3,2f8.4)
                do k=i+1,npts
                   if (d(k)-z.lt.dz) then
@@ -95,13 +95,12 @@
                      buf(kk,1)=d(k)
                      buf(kk,2)=v(k,1)
                      buf(kk,3)=v(k,2)
-!                     write (12,33) d(k),(v(k,j),j=1,2)
                   end if
                enddo
                exit ! exit inner loop
             end if
-         enddo
-     enddo
+         enddo ! end loop on velocity model layers
+     enddo ! end loop on interpolation files
 
 ! write to output file
       nk=kk
@@ -194,8 +193,8 @@
          read (7,*,end=30) z_s(i),alpha_s(i),beta_s(i)
          if (ideprad.eq.2) z_s(i)=erad-z_s(i) ! note erad is earth radius
          if (z_s(i).eq.erad) go to 30
-         call FLATTEN(z_s(i),alpha_s(i),z(i),alpha(i))
-         call FLATTEN(z_s(i),beta_s(i),z(i),beta(i))
+         call FLATTEN(z_s(i),alpha_s(i),z(i),alpha(i)) ! flat-earth transform for Vp
+         call FLATTEN(z_s(i),beta_s(i),z(i),beta(i)) ! flat-earth transform for Vs
       enddo   
       print *,'***',npts0,' point maximum exceeded in model'
       stop
@@ -255,8 +254,6 @@
             dep = dep1 + (idep-1)*dep3
             deptab(idep)=dep
          enddo   
-         !ndep=idep
-
 
 ! get number of rays to compute     
       pmin=0.
@@ -271,17 +268,24 @@
       
 
 ! --------------------------------- ray tracing -------------------------
+!    shoot rays with different ray parameters (nump total) from the surface,
+!    and keep track of the offset distance (x) and travel time (t) to different depths
       np=0
 200   do np = 1, nump ! ------- loop over ray parameters (p) ---------------
-      p = pmin + (np-1)*pstep
-
+      
+         ! current ray parameter
+         p = pmin + (np-1)*pstep
          ptab(np)=p
 
-         x=0.
+         x=0. ! rays start at x,t = 0,0
          t=0.
          xcore=0.
          tcore=0.
-         imth=3              !preferred v(z) interpolation method
+         
+         imth=3  !preferred v(z) interpolation method, optimal for flat-earth transform
+         
+         ! initialize arrays: depxcor, deptcor, depucor (size nump by ndep), which track
+         ! the offset (x) and travel time (t) for different rays to different depths 
          do idep=1,ndep
             if (deptab(idep).eq.0.) then
                depxcor(np,idep)=0.
@@ -303,27 +307,33 @@
                 go to 200
              end if
 
-    ! LAYERTRACE calculates the travel time and range offset for ray tracing through a single layer.
-    !  Input:   p     =  horizontal slowness
-    !           h     =  layer thickness
-    !           utop  =  slowness at top of layer
-    !           ubot  =  slowness at bottom of layer
-    !           imth  =  interpolation method
-    !                    imth = 1,  v(z) = 1/sqrt(a - 2*b*z)     fastest to compute
-    !                         = 2,  v(z) = a - b*z               linear gradient
-    !                         = 3,  v(z) = a*exp(-b*z)           preferred when Earth Flattening is applied
-    !  Returns: dx    =  range offset
-    !           dt    =  travel time
-    !           irtr  =  return code (-1: zero thickness layer, 0: ray turned above layer, 
-    !                 =    1: ray passed through layer, 2: ray turned within layer, 1 segment counted)
-             h=z(i+1)-z(i)
-             if (h.eq.0.) cycle                       !skip if interface
-             call LAYERTRACE(p,h,slow(i,iw),slow(i+1,iw),imth,dx,dt,irtr)
+             ! layer thickness
+             h=z(i+1)-z(i)							 
+             if (h.eq.0.) cycle    !skip if interface
+             
+            ! LAYERTRACE calculates the travel time and range offset for ray tracing through a single layer.
+			!  Input:   p     =  horizontal slowness
+			!           h     =  layer thickness
+			!           utop  =  slowness at top of layer
+			!           ubot  =  slowness at bottom of layer
+			!           imth  =  interpolation method
+			!                    imth = 1,  v(z) = 1/sqrt(a - 2*b*z)  fastest to compute
+			!                         = 2,  v(z) = a - b*z            linear gradient
+			!                         = 3,  v(z) = a*exp(-b*z)        referred when Earth Flattening is applied
+			!  Returns: dx    =  range offset
+			!           dt    =  travel time
+			!           irtr  =  return code (-1: zero thickness layer, 0: ray turned above layer, 
+			!                 =    1: ray passed through layer, 2: ray turned within layer, 1 segment counted)
+             call LAYERTRACE(p,h,slow(i,iw),slow(i+1,iw),imth,dx,dt,irtr) ! compute dx, dt for layer
+             
+             ! update x,t after tracing through layer
              x=x+dx
              t=t+dt
-
-             if (irtr.eq.0.or.irtr.eq.2) exit           !ray has turned
+             
+             ! exit when ray has turned
+             if (irtr.eq.0.or.irtr.eq.2) exit  
          
+         	! save current x,t,u for ray sampling source depths (stored in deptab)
              do idep=1,ndep
                 if (abs(z_s(i+1)-deptab(idep)).lt.0.1) then
                    depxcor(np,idep)=x
@@ -335,9 +345,9 @@
 !   
          enddo !------------ end loop on layers----------------------------------
          
+         ! compute final (surface-to-surface) two-way offset and travel times for ray
          x=2.*x
          t=2.*t
-
          deltab(np)=x                   !stored in km
          tttab(np)=t                    !stored in seconds
 
@@ -365,54 +375,66 @@
 
 !-------------------------------------------------------------------------
 
-!------------- Format for output ----------
 
-
-! now compute T(X,Z) for first arriving rays
-      do idep=1,ndep
-         icount=0
-         xold=-999.
+!-----  Now compute T(X,Z) for first arriving rays
+      
+      do idep=1,ndep ! loop over source depth's (Z)
+         
+         
+         icount=0 ! save array index
+         xold=-999. ! current x
+         
+         ! if source is at 0 depth, go skip the upgoing ray loop
          if (deptab(idep).eq.0.) then
             i2=np
             go to 223
          end if
-         do i=1,np                         !upgoing rays from source
-            x2=depxcor(i,idep)
-            if (x2.eq.-999.) exit
-            if (x2.le.xold) exit            !stop when heads inward
+         
+         ! loop for upgoing rays from the source
+         do i=1,np                        
+            x2=depxcor(i,idep)              ! offset at this source depth
+            if (x2.eq.-999.) exit          
+            if (x2.le.xold) exit            !stop when ray heads inward
             t2=deptcor(i,idep)
-            icount=icount+1
-            xsave(icount)=x2
-            tsave(icount)=t2
-            psave(icount)=-ptab(i)             !sav as negative for upgoing from source
-            usave(icount)=depucor(i,idep)
+            icount=icount+1                  ! increment save index
+            xsave(icount)=x2                 ! save offset from this depth to surface
+            tsave(icount)=t2                 ! save travel time
+            psave(icount)=-ptab(i)           ! save p as negative for upgoing from source
+            usave(icount)=depucor(i,idep)    ! save slowness
             xold=x2
          enddo
          i2=i-1
          
+         ! loop for downgoing rays from the source
 223      continue         
-         do i=i2,1,-1                    !downgoing rays from source
-            if (depxcor(i,idep).eq.-999.) cycle
-            if (deltab(i).eq.-999.) cycle
-            x2=deltab(i)-depxcor(i,idep)
-            t2=tttab(i)-deptcor(i,idep)
-            icount=icount+1
-            xsave(icount)=x2
-            tsave(icount)=t2
-            psave(icount)=ptab(i)
-            usave(icount)=depucor(i,idep)
+         do i=i2,1,-1                  
+            if (depxcor(i,idep).eq.-999.) cycle ! skip
+            if (deltab(i).eq.-999.) cycle       ! skip
+            x2=deltab(i)-depxcor(i,idep)    ! source-surface offset is total offset minus offset from downgoing leg 
+            t2=tttab(i)-deptcor(i,idep)     ! same for source surface travel time
+            icount=icount+1                 ! increment save index
+            xsave(icount)=x2                ! save offset from this depth to surface
+            tsave(icount)=t2                ! save p as negative for upgoing from source
+            psave(icount)=ptab(i)           ! save p as negative for upgoing from source
+            usave(icount)=depucor(i,idep)   ! save slowness
             xold=x2
          enddo   
          ncount=icount
          
+         
+         ! interpolate offsets to the desired spacing and find the first-arriving ray
          ndel = floor((del2-del1)/del3) + 1 ! number of interpolation pts
-         do idel = 1, ndel
-            deldel = del1 + (idel-1)*del3
+         
+         do idel = 1, ndel !---------- loop over offsets
             
+            deldel = del1 + (idel-1)*del3 ! current offset in km
+            
+            ! convert from km to degree, if desired
             del=deldel
             if (itype.eq.2) del=deldel*kmdeg
             delttab(idel)=deldel
             
+            ! search for first arriving ray at this offset
             tt(idel,idep)=99999.
             do i=2,ncount
                x1=xsave(i-1)
@@ -439,9 +461,6 @@
                   tt(idel,idep)=tbest
                   scr1=pbest/ubest
                   if (scr1.gt.1.) then
-!                     print *,'***Warning: p>u in angle calculation'
-!                     print *,'   Ray assumed horizontal'
-!                     print *,deptab(idep),del,tbest,pbest,ubest
                      scr1=1.
                   end if
                   angle=asin(scr1)*degrad
@@ -458,14 +477,16 @@
                   endif
                end if
             enddo
-            if (tt(idel,idep).eq.99999.) tt(idel,idep)=0.
+            
+            ! no ray arrivals
+            if (tt(idel,idep).eq.99999.) tt(idel,idep)=0.    
             if (itype.eq.2) tt(idel,idep)=tt(idel,idep)/60.            
 
-         enddo                                    !end loop on range
-         !ndel=idel
+         enddo                                    !end loop on offsets
                   
       enddo                                        !end loop on depth
 
+      ! fix edge cases
       if (delttab(1).eq.0.) then
          if (deptab(1).eq.0.) tt(1,1)=0.                 !set tt to zero at (0,0)
          do idep=1,ndep
@@ -578,58 +599,69 @@
       subroutine LAYERTRACE(p1,h1,utop1,ubot1,imth,dx1,dt1,irtr)
       implicit real*8 (a-h,o-z)
       real*4 p1,h1,utop1,ubot1,dx1,dt1
+      
+      ! double precision
       p=dble(p1)
       h=dble(h1)
       utop=dble(utop1)
       ubot=dble(ubot1)
-!
-      if (h.eq.0.) then                  !check for zero thickness layer
+
+      !check for zero thickness layer
+      if (h.eq.0.) then                  
          dx1=0.
          dt1=0.
          irtr=-1
          return         
       end if
-!
+
+      ! slowness of top layer
       u=utop
+      
+      !check for complex vertical slowness: ray turned above layer
       y=u-p
-      if (y.le.0.) then                       !complex vertical slowness
+      if (y.le.0.) then                       
          dx1=0.
          dt1=0.
          irtr=0
          return
       end if
-!
+
+
+	  ! qs = vertical slowness: sqrt(u^2-p^2)
       q=y*(u+p)
       qs=dsqrt(q)
-!
-! special function needed for integral at top of layer
+
+      ! special function needed for integral at top of layer
       if (imth.eq.2) then
          y=u+qs
          if (p.ne.0.) y=y/p
          qr=dlog(y)
-      else if (imth.eq.3) then
+      else if (imth.eq.3) then ! flat-earth
          qr=atan2(qs,p)
       end if      
-!
+
+
+      ! b factor (ray tracing integral constant)
       if (imth.eq.1) then
           b=-(utop**2-ubot**2)/(2.*h)
       else if (imth.eq.2) then
           vtop=1./utop
           vbot=1./ubot
           b=-(vtop-vbot)/h
-      else
-          b=-dlog(ubot/utop)/h
+      else                     
+          b=-dlog(ubot/utop)/h   ! flat earth
       end if  
 !
-      if (b.eq.0.) then                         !constant velocity layer
+	  !constant velocity layer
+      if (b.eq.0.) then                         
          b=1./h
          etau=qs
          ex=p/qs
          irtr=1
          go to 160
       end if
-!
-! integral at upper limit, 1/b factor omitted until end
+
+	! ray tracing integral at upper limit, 1/b factor omitted until end
       if (imth.eq.1) then
          etau=-q*qs/3.
          ex=-qs*p
@@ -638,16 +670,18 @@
          etau=qr-ex
          if (p.ne.0.) ex=ex/p
       else
-         etau=qs-p*qr
+         etau=qs-p*qr                  ! flat-earth
          ex=qr
       end if
-!
-! check lower limit to see if we have turning point
+
+	 ! check lower limit to see if we have turning point
       u=ubot
       if (u.le.p) then                                !if turning point,
-         irtr=2                                    !then no contribution
+         irtr=2                                       ! then no contribution
          go to 160                                    !from bottom point
-      end if 
+      end if
+      
+      ! no turning point: ray passes through 
       irtr=1
       q=(u-p)*(u+p)
       qs=dsqrt(q)
@@ -671,11 +705,14 @@
          etau=etau-qs+p*qr
          ex=ex-qr
       end if      
-!
-160   dx=ex/b
-      dtau=etau/b
-      dt=dtau+p*dx                                     !convert tau to t
-!
+
+
+      ! ray tracing equations to get dt, dx
+160   dx=ex/b         ! horizontal offset in km
+      dtau=etau/b     ! delay time
+      dt=dtau+p*dx    ! convert delay time to travel time
+
+      ! back to single precision at the end
       dx1=sngl(dx)
       dt1=sngl(dt)
       return
