@@ -1666,9 +1666,15 @@ endif
    open (13, file = outfile_cat)
    
    do iq = 1, nq
+   
+   ! fix origin time seconds field, if necessary (added 10/2017)
+   qsc_cat(iq) = qsc_cat(iq) + qtimR(iq)
+   if ((qsc_cat(iq) < 0.) .or. (qsc_cat(iq) >= 60.0)) then
+       call fix_origin_time( qdy_cat(iq), qhr_cat(iq), qmn_cat(iq), qsc_cat(iq))
+   endif
                 
    write (13, 860) qyr_cat(iq), qmon_cat(iq), qdy_cat(iq), qhr_cat(iq), qmn_cat(iq), &
-   qsc_cat(iq)+qtimR(iq), idcusp(iq), qlatR(iq), qlonR(iq), qdepR(iq), qmag_cat(iq), &
+   qsc_cat(iq), idcusp(iq), qlatR(iq), qlonR(iq), qdepR(iq), qmag_cat(iq), &
    iq,itreeqR(iq),nbranchqR(iq),qnpair(iq),qndiffP(iq),qndiffS(iq),qrmsP(iq),qrmsS(iq), &
    MADh_boot(iq), MADz_boot(iq), MADt_boot(iq), qlat_cat(iq), qlon_cat(iq), qdep_cat(iq)           
 860   format (i4, 4i3, f7.3, i10, f10.5, f11.5, f8.3, f6.2,  &                          ! 11/2016 changed lat from f9.5 to f10.5 for negative latitudes
@@ -1739,6 +1745,54 @@ endif
 
 
 !--------------------------SUBROUTINES----------------------------------------------------!
+
+! FIX_ORIGIN_TIME fixes the origin time for output in situations where the corrected seconds field
+!   is negative or greater than 60. (Note: may in very rare circumstances give incorrect results
+!   if the correction switches the origin time to a new day...)
+
+subroutine FIX_ORIGIN_TIME(qday, qhr, qmin, qsec)
+
+	implicit none
+	
+	integer qyr, qmon, qday, qhr, qmin
+	real qsec
+	
+	! 1. fix seconds field
+	if (qsec < 0) then
+		qsec = qsec + 60.0
+		qmin = qmin - 1
+	else if (qsec >= 60.) then
+		qsec = qsec - 60.0
+		qmin = qmin + 1 
+	else
+		return
+	endif
+	
+	! 2. fix minutes field
+	if (qmin < 0) then
+		qmin = qmin + 60
+		qhr = qhr - 1
+	else if (qmin >= 60) then
+		qmin = qmin -60
+		qhr = qhr + 1 
+	else
+		return
+	endif
+	
+	! 3. fix hours field (ignores rare situation where origin day may changes)
+	if (qhr < 0) then
+		qhr = qhr + 24
+		qday = qday - 1	
+	else if (qmin >= 24) then
+		qhr = qhr - 24 
+		qday = qday + 1
+	else
+		return
+	endif
+
+
+end subroutine FIX_ORIGIN_TIME
+
 
 ! DIFLOC performs differential location for an event pair with respect to its centroid. 
 ! The method uses an iterative ("shrinking-box") grid search approach to obtain the best (L1)
