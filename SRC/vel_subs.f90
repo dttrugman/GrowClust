@@ -132,10 +132,11 @@
 !               de11     = min del for table
 !               de12     = max del for table
 !               de13     = del spacing for table
+!               ideprad  = velocity model fmt, first column of input:  1=depth, 2=radius (added 04/2018)
 !               ttfile   = name of output travel time table file
 !
 !-----------------------------------------------------------------------
-      subroutine deptable(vmodel,iw,plongcut,dep1,dep2,dep3,del1,del2,del3,ttfile)
+      subroutine deptable(vmodel,iw,plongcut,dep1,dep2,dep3,del1,del2,del3,ideprad,ttfile)
       
       implicit none
 
@@ -178,7 +179,6 @@
       kmdeg=ecircum/360.
       degrad=180./pi
       
-      ideprad = 1! velocity model fmt, first column of input:  1=depth, 2=radius
       zmax = 9999 ! maximum depth
       nump = 5000 ! number of rays
       ideptype = 1 ! Source depths:  (1) Range, (2) Exact
@@ -518,7 +518,7 @@
       
 !     third line: row of source depths
       write (11,409) (deptab(j),j=1,ndep)
-409      format (8x,100f8.1)
+409      format (8x,100f9.1)
       
 !   fill in table:
 !       first column is X/DEL of each row
@@ -531,8 +531,8 @@
             write (11,413) delttab(i),(tt(i,j),j=1,ndep)
          end if
 
-410      format (101f8.4)
-413      format (f8.3,100f8.4)
+410      format (101f9.4)
+413      format (f9.3,100f9.4)
 
       enddo
       close (11)

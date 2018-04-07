@@ -163,13 +163,14 @@
 !           boxwid    =  initial "shrinking-box" width (km) in relative relocation subroutines
 !           nit       =  number of iterations in relative relocation subroutines
 !           samp_type =  bootstrap sampling type (1 or 2)
-!           irelonorm =  relocation norm (1=L1 norm, 2=L2 norm)           
+!           irelonorm =  relocation norm (1=L1 norm, 2=L2 norm)
+!           vzmodel_type = velocity model type (1=flat earth, 2=radial)           
 !-----------------------------------------------------------------------------------------
-   subroutine PARAM_CHECK(conparam, hshiftmax, vshiftmax, rmedmax, boxwid, nit, samp_type, irelonorm)
+   subroutine PARAM_CHECK(conparam, hshiftmax, vshiftmax, rmedmax, boxwid, nit, samp_type, irelonorm, vzmodel_type)
      
    implicit none
    real :: conparam, hshiftmax, vshiftmax, rmedmax, boxwid 
-   integer :: nit, samp_type, params_ok , irelonorm 
+   integer :: nit, samp_type, params_ok , irelonorm, vzmodel_type 
    
    print *, 'Checking grow_params.mod parameters...'
    params_ok = 1 ! input is ok unless problem is found
@@ -213,6 +214,13 @@
    if ((irelonorm < 1) .or. (irelonorm > 3)) then 
      print *, 'grow_params.mod error: irelonorm'
      print *, irelonorm
+     params_ok = 0
+   endif
+   
+   ! check vz_model type
+   if ((vzmodel_type < 1) .or. (vzmodel_type > 3)) then 
+     print *, 'grow_params.mod error: vzmodel_type'
+     print *, vzmodel_type
      params_ok = 0
    endif
    

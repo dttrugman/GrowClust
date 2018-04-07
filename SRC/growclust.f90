@@ -300,7 +300,7 @@ program growclust
       tt_del0, tt_del1, tt_ddel, rmsmax, delmax, iponly, nboot, maxboot)
 
 ! call subroutine to check grow_params module for errors
-    call PARAM_CHECK(conparam, hshiftmax, vshiftmax, rmedmax, boxwid, nit, samp_type, irelonorm) 
+    call PARAM_CHECK(conparam, hshiftmax, vshiftmax, rmedmax, boxwid, nit, samp_type, irelonorm, vzmodel_type) 
     
      print *, '--------------------------------------------------'
      print *, ' '
@@ -418,12 +418,12 @@ program growclust
    
    print *, 'Creating P-phase table: ', trim(TTtabfile(1))
    call deptable(vzfinefile, 1, plongcutP, tt_dep0,tt_dep1, tt_ddep, &
-     tt_del0, tt_del1, tt_ddel, TTtabfile(1)(1:100))
+     tt_del0, tt_del1, tt_ddel, vzmodel_type, TTtabfile(1)(1:100))
    print *, ' '
      
    print *, 'Creating S-phase table: ', trim(TTtabfile(2))
    call deptable(vzfinefile, 2, plongcutS, tt_dep0,tt_dep1, tt_ddep, &
-     tt_del0, tt_del1, tt_ddel, TTtabfile(2)(1:100))
+     tt_del0, tt_del1, tt_ddel, vzmodel_type, TTtabfile(2)(1:100))
      
     ! Added 2/2017 to check event depths vs velocity model, travel time tables
     print '(a26, f8.2, f8.2)', 'min, max event depth:', min_qdep, max_qdep

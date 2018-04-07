@@ -59,5 +59,10 @@
    integer, parameter  :: samp_type = 2 ! bootstrap sampling type
         !  1: Resample each event pair independently (each pair always has the same # of picks in each resample)'
         !  2: Resample the entire data vectors at once (event pairs may have different # of picks in each resample)
+        
+   ! ------- Velocity model parameters (added 04/2018) -------------------------
+   integer, parameter  :: vzmodel_type = 1 ! velocity model type: 1 = flat earth, (Z,Vp,Vs)
+                                           !                  or  2 = radial, (R,Vp,Vs): 
+                                           !                           note: option 2 has not been extensively tested!!!
    
    end MODULE grow_params
