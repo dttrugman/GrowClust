@@ -1176,11 +1176,6 @@ end subroutine LOOKUP_STA
    
 
    
-   !!! TODO !!!
-   
-   ! update manual (V1.2)
-   ! modify shrinking box and shallow depth stuff
-   ! test
-   ! update manual (V1.2)
+
    
       

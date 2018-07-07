@@ -954,9 +954,10 @@ program growclust
 !         print *, 'DIFCLUST: ',qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, cdist, torgdif, rms, rmed, resol
 
 
-        ! added for robustness: reject cluster merger for negative cluster centroid depths
-          if (qdep1 < tt_dep0 .or. qdep2 < tt_dep0) then 
-             print *, '***rejecting cluster merger (negative depth) ', cdist, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif
+        ! added for robustness: careful with cluster mergers near surface)
+          !if (qdep1 < tt_dep0 .or. qdep2 < tt_dep0) then 
+          if (qdep1 < min_qdep .or. qdep2 < min_qdep) then ! modified 07/2018
+             print *, '***rejecting cluster merger (too shallow) ', cdist, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif
              cycle
           endif
 
@@ -1842,6 +1843,7 @@ subroutine DIFLOC(qlat0,qlon0,qdep0,npick,tt,ip,slat,slon, &
            torgdif,resid,rms,rmed,resol)
    real*8 qlat0, qlon0, qlat1, qlon1, qlat2, qlon2, dlat, dlon, dlat0, dlon0, flat1, flat2, flon1, flon2, &
           flatbest1, flonbest1, flatbest2, flonbest2
+          
    real tt(npick), resid(npick)
    real*8 slat(npick), slon(npick)
    real rabs(3000)
@@ -1858,7 +1860,14 @@ subroutine DIFLOC(qlat0,qlon0,qdep0,npick,tt,ip,slat,slon, &
    dlat = 0.5*boxwid/degkm
    cosqlat = cos(qlat0/degrad)
    dlon = dlat/cosqlat
-   ddep = 0.5*boxwid
+   ! careful near surface (added 07/2018)
+   zboxwid = boxwid
+   if (qdep0 < 0) then
+      zboxwid = min(1.0, boxwid)
+   else if (qdep0 < boxwid/2.) then
+      zboxwid = max(1.0,2.0*qdep0)
+   endif 
+   ddep = 0.5*zboxwid
 
     ! start iteration
    do it = 1, nit
@@ -2045,7 +2054,7 @@ subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
            fdep1, fdep2, dx, dy, delkm, tsec1, tsec2, &
            tdif, residmed, fit, fit2, fdepbest1,  &
            fdepbest2, tbest, qorg, torgdif,  cdep1, cdep2, &
-           rms, rmed,  qdep0, boxwid, resol, cdist
+           rms, rmed,  qdep0, boxwid, resol, cdist, zboxwid
            
    real (kind=8) :: dlat0, dlon0, dlat, dlon, flat1, flat2, flon1, flon2, flatbest1, flonbest1, &
                     flatbest2, flonbest2, clat1, clat2, clon1, clon2, qlat0, qlon0
@@ -2076,7 +2085,14 @@ subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
    dlat = 0.5*boxwid/degkm
    cosqlat = cos(qlat0/degrad)
    dlon = dlat/cosqlat
-   ddep = 0.5*boxwid
+   ! careful near surface (added 07/2018)
+   zboxwid = boxwid
+   if (qdep0 < 0) then
+      zboxwid = min(1.0, boxwid)
+   else if (qdep0 < boxwid/2.) then
+      zboxwid = max(1.0,2.0*qdep0)
+   endif 
+   ddep = 0.5*zboxwid
 
 ! start iterations
    do it = 1, nit
