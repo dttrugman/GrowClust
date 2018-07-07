@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2017 Daniel Trugman
+! Copyright 2018 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -56,7 +56,7 @@ program growclust
               nconnect, ib, ngoodmin, ntot, &
               nb, iq, itree, n, nk, kraw8, ip8, i8, j8, &
               npr8, npk8, k8, itreeold, nbranch_i, nbranch_j, idcusp_i, idcusp_j, &
-              nbranch_min, iflag, evlist_fmt, xcordat_fmt, tdif_fmt, ierror
+              nbranch_min, iflag, evlist_fmt, xcordat_fmt, tdif_fmt, ierror, max_qid
               
 
 ! generic single-precision reals                 
@@ -81,7 +81,8 @@ program growclust
    integer, dimension(ndif0) :: ipp
    real, dimension(ndif0) :: rxcor, tdif, dist
    real(dp), dimension(ndif0) :: slat, slon
-   character (len=12), dimension(ndif0) :: stname
+   !character (len=12), dimension(ndif0) :: stname
+   character (len=5), dimension(ndif0) :: stname
    integer, dimension(10) :: ip810
    integer, dimension(npair0) :: ngood, indxr 
    real, dimension(npair0) :: rfactor
@@ -97,6 +98,7 @@ program growclust
    real(dp), dimension(nq0) :: qlat, qlon, qlat_cat, qlon_cat
    integer, dimension(nq0) :: qyr_cat, qmon_cat, qdy_cat, qhr_cat, qmn_cat, idcusp
    real, dimension (nq0) :: qsc_cat, qmag_cat
+   integer, dimension(maxevid) :: qid2qnum = 0
    
 ! variables to go into DIFCLUST
    integer, dimension(n08) :: ipp8
@@ -145,7 +147,7 @@ program growclust
     integer, dimension (ntmax) :: nb_indxr
 
 ! variables for log file output 
-    real :: CrmsP, CrmsS, resPmean, resSmean, resPmed, resSmed
+    real :: CrmsP, CrmsS, resPmean, resSmean
     integer :: nreloc, ntree2, ntree5, ntree10, ntree20, ntree50, ntree100
     integer :: npairC, npC, nsC, jjP, jjS
     real, dimension (ndif0) :: resP, resS
@@ -155,7 +157,13 @@ program growclust
     character(len=100), dimension(2) :: TTtabfile
     real :: vpvs_factor, vz_dz, plongcutP, plongcutS, vzmin, vzmax
     real :: tt_dep0, tt_dep1, tt_ddep, tt_del0, tt_del1, tt_ddel
-    integer :: vzinterp_type, rayparam_min
+    integer :: rayparam_min
+    
+! variables for station listings
+    integer :: nsta
+    real(dp), dimension(nsta0) ::  sllats, sllons
+    character (len=5), dimension(nsta0) :: slnames
+    integer, dimension(256) :: slkeys
 
 !---------------------------------------------------------------------------!
    
@@ -307,12 +315,12 @@ program growclust
 
 !-----------------------------------------------------------------------------------------    
     
-! READ_infile_evlist: Read event list to get starting (catalog) locations --------------------
+! READ_EVFILE: Read event list to get starting (catalog) locations --------------------
         ! -- accepts different event list formats specified by xcordat_fmt, stlist_fmt 
     print *, ' '
     print *, 'Reading event list: ' 
-    call READ_EVFILE(evlist_fmt, infile_evlist, nq0,idcusp, qyr_cat, qmon_cat, qdy_cat,  &
-    qhr_cat, qmn_cat, qsc_cat, qmag_cat, qlat_cat, qlon_cat, qdep_cat, nq, min_qdep, max_qdep)
+    call READ_EVFILE(evlist_fmt, infile_evlist, nq0, maxevid, idcusp, qid2qnum, qyr_cat, qmon_cat,   &
+    qdy_cat, qhr_cat, qmn_cat, qsc_cat, qmag_cat, qlat_cat, qlon_cat, qdep_cat, nq, min_qdep, max_qdep, max_qid)
     
     ! initialize relocated positions and clustertree arrays (1 event/cluster) -----
     do i = 1, nq   
@@ -335,16 +343,23 @@ program growclust
    ntree = nq                 !start out with number of trees equal to number of quakes
 !---------------------------
 
+    ! READ_STLIST: Reads site list and returns an alphabetized list with locations
+    print *, ' '
+    print *, 'Reading station list: '
+    call READ_STLIST(infile_stlist, stlist_fmt, nsta0, &
+           slnames, sllats, sllons, nsta, slkeys)
+
     ! READ_XCORDATA: Reads xcor data and associated station locations
-    ! -- accepts different xcor, station formats using xcordat_fmt, stlist_fmt
     ! -- output event pair arrays: iqq1, iqq2, idcusp11, idcusp22, index1, index2
     ! -- output tdif/phase arrays: stname, ipp, tdif, rxcor, dist, slat, slon
     print *, ' '
-    print *, 'Reading xcor data and associated station list: '
-    call READ_XCORDATA(xcordat_fmt, stlist_fmt, tdif_fmt, infile_xcordat, infile_stlist, npair0, ndif0, &
-     nq, idcusp, qlat, qlon, rmincut, rmin, delmax, rpsavgmin, iponly, ngoodmin, & 
+    print *, 'Reading xcor data : '
+     call READ_XCORDATA(xcordat_fmt, tdif_fmt, infile_xcordat, npair0, ndif0, nq, max_qid, &
+     qid2qnum, qlat, qlon, rmincut, rmin, delmax, rpsavgmin, iponly, ngoodmin, & 
+     nsta, slnames, sllats, sllons, slkeys, &
      npair, nk, iqq1, iqq2, idcusp11, idcusp22, index1, index2, &
-     stname, ipp, tdif, rxcor, dist, slat, slon) 
+     stname, ipp, tdif, rxcor, dist, slat, slon)
+     
      
   ! for robustness, final check to make sure nq, npair, nk are not too large (edit 11/2016)
   ierror = 0
@@ -390,16 +405,16 @@ program growclust
       
       ! quality control checks on xcor data
       if (dist(k) > tt_del1) then
-      	  print *, 'ERROR: STATION DISTANCE', dist(k), '> tt_del1', tt_del1
-      	  print *, 'Check input files (evlist, stlist, xcordata) for errors or '
+          print *, 'ERROR: STATION DISTANCE', dist(k), '> tt_del1', tt_del1
+          print *, 'Check input files (evlist, stlist, xcordata) for errors or '
           print *, 'increase tt_del1 in GrowClust control (.inp) file.'
-      	  ierror = 1
+          ierror = 1
       endif
       if (tdif(k) > tdifmax) then
           print *, 'ERROR: DIFFERENTIAL TIME', tdif(k), '> tdifmax', tdifmax
           print *, 'Check differential time data for errors or '
           print *, 'increase tdifmax parameter in grow_params.f90 and recompile.'
-      	  ierror = 1
+          ierror = 1
       endif
         
    enddo
@@ -430,20 +445,20 @@ program growclust
     print '(a26, f8.2, f8.2)', 'min, max table depth:', tt_dep0, tt_dep1
     print '(a26, f8.2, f8.2)', 'min, max vzmodel depth:', vzmin, vzmax 
     if (min_qdep < tt_dep0) then
-    	print *, 'WARNING: min event depth < min table depth'
-    	!ierror = 1 ! allow this, but warn user (should be ok if depth is near 0)
+        print *, 'WARNING: min event depth < min table depth'
+        !ierror = 1 ! allow this, but warn user (should be ok if depth is near 0)
     endif
     if (min_qdep < vzmin)  then
-    	print *, 'WARNING: min event depth < min vzmodel depth'
-    	!ierror = 1 ! allow this, but warn user (should be ok if depth is near 0)
+        print *, 'WARNING: min event depth < min vzmodel depth'
+        !ierror = 1 ! allow this, but warn user (should be ok if depth is near 0)
     endif
     if (max_qdep > tt_dep1) then ! note tt_dep1 is >= vzmax
-    	print *, 'ERROR: max event depth > max table / velocity model depth'
-    	ierror = 1 ! don't allow this
+        print *, 'ERROR: max event depth > max table / velocity model depth'
+        ierror = 1 ! don't allow this
     endif
     if (tt_dep0 < vzmin) then ! for robustness, check this as well
-    	print *, 'ERROR: min table depth < min vzmodel depth'
-    	ierror = 1
+        print *, 'ERROR: min table depth < min vzmodel depth'
+        ierror = 1
     endif
     if (ierror == 1) stop ! stop on this error
     
@@ -939,11 +954,11 @@ program growclust
 !         print *, 'DIFCLUST: ',qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, cdist, torgdif, rms, rmed, resol
 
 
-		! added for robustness: reject cluster merger for negative cluster centroid depths
-		  if (qdep1 < tt_dep0 .or. qdep2 < tt_dep0) then 
-			 print *, '***rejecting cluster merger (negative depth) ', cdist, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif
-			 cycle
-		  endif
+        ! added for robustness: reject cluster merger for negative cluster centroid depths
+          if (qdep1 < tt_dep0 .or. qdep2 < tt_dep0) then 
+             print *, '***rejecting cluster merger (negative depth) ', cdist, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif
+             cycle
+          endif
 
          ! added for robustness
           if (abs(torgdif) > 50.) then 
@@ -955,7 +970,7 @@ program growclust
               qlat0, qlon0, qdep0, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif, rms, rmed, resol
              do i = 1, npk8
                 print '(i4,f9.4,f10.5,f11.5,f10.5,f11.5,f8.3,f8.3,f10.5,f11.5,f8.3,f8.3)', &
-                	i, tdif8(i), slat8(i), slon8(i), qlat18(i), qlon18(i), qdep18(i), qtim18(i), &
+                    i, tdif8(i), slat8(i), slon8(i), qlat18(i), qlon18(i), qdep18(i), qtim18(i), &
                     qlat28(i), qlon28(i), qdep28(i), qtim28(i) 
              enddo
              close(16)
@@ -1752,43 +1767,43 @@ endif
 
 subroutine FIX_ORIGIN_TIME(qday, qhr, qmin, qsec)
 
-	implicit none
-	
-	integer qyr, qmon, qday, qhr, qmin
-	real qsec
-	
-	! 1. fix seconds field
-	if (qsec < 0) then
-		qsec = qsec + 60.0
-		qmin = qmin - 1
-	else if (qsec >= 60.) then
-		qsec = qsec - 60.0
-		qmin = qmin + 1 
-	else
-		return
-	endif
-	
-	! 2. fix minutes field
-	if (qmin < 0) then
-		qmin = qmin + 60
-		qhr = qhr - 1
-	else if (qmin >= 60) then
-		qmin = qmin -60
-		qhr = qhr + 1 
-	else
-		return
-	endif
-	
-	! 3. fix hours field (ignores rare situation where origin day may changes)
-	if (qhr < 0) then
-		qhr = qhr + 24
-		qday = qday - 1	
-	else if (qmin >= 24) then
-		qhr = qhr - 24 
-		qday = qday + 1
-	else
-		return
-	endif
+    implicit none
+    
+    integer qyr, qmon, qday, qhr, qmin
+    real qsec
+    
+    ! 1. fix seconds field
+    if (qsec < 0) then
+        qsec = qsec + 60.0
+        qmin = qmin - 1
+    else if (qsec >= 60.) then
+        qsec = qsec - 60.0
+        qmin = qmin + 1 
+    else
+        return
+    endif
+    
+    ! 2. fix minutes field
+    if (qmin < 0) then
+        qmin = qmin + 60
+        qhr = qhr - 1
+    else if (qmin >= 60) then
+        qmin = qmin -60
+        qhr = qhr + 1 
+    else
+        return
+    endif
+    
+    ! 3. fix hours field (ignores rare situation where origin day may changes)
+    if (qhr < 0) then
+        qhr = qhr + 24
+        qday = qday - 1 
+    else if (qmin >= 24) then
+        qhr = qhr - 24 
+        qday = qday + 1
+    else
+        return
+    endif
 
 
 end subroutine FIX_ORIGIN_TIME
@@ -2204,222 +2219,6 @@ subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
 
 end subroutine DIFCLUST
 
-
-!-----------------------------------------------------------------------
-! GROUPLOC locates a single event relative to group of events. 
-! This is analogous to DIFLOC, which does the same thing for two events, 
-! relative to their centroid... As in DIFLOC, the method uses an iterative
-! ("shrinking-box") grid search approach to obtain the best (L1) relative locations.
-!
-!  Inputs:  qlat0  =  starting event latitude
-!           qlon0  =  starting event longitude
-!           qdep0  =  starting event depth (km)
-!           npick  =  number of differential times
-!           tt     =  array (len=npick) of dif times, t2-t1 (s)
-!           ip     =  array (len=npick) with phase index numbers (1 to 10) for tt data
-!           slat   =  array (len=npick) with station latitudes
-!           slon   =  array (len=npick) with station longitudes
-!           qlat   =  array (len=npick) with other event latitudes
-!           qlon   =  array (len=npick) with other event longitudes
-!           qdep   =  array (len=npick) with other event depths
-!           qorg   =  array (len=npick) with other event origin time shifts   (***new to this version)
-!           TTtabfile  =  array(len=npick) with phase names
-!           boxwid =  starting box width (km)
-!           nit    =  number of iterations to perform
-!           inorm  =  norm to use when computing fit
-!           fracsk =  shrinking box fraction
-! Returns:  qlat1  =  best-fitting latitude for first event
-!           qlon1  =  best-fitting longitude
-!           qdep1  =  best-fitting depth (km)
-!           qlat2  =  best-fitting latitude for second event
-!           qlon2  =  best-fitting longitude 
-!           qdep2  =  best-fitting depth (km)
-!           torgdif=  origin time difference, i.e., t2-t1 median residual (>0 when 2 is later than 1)
-!           resid  =  array (len=npick) of residuals (s) between observed tdif (tt) and predicted
-!           rms    =  rms residual ( sqrt( sum(resid**2)/npick) )
-!           rmed   =  L2/L1/robomean of the absolute value of residual
-!           resol  =  nominal resolution (m) of final box
-!
-      subroutine GROUPLOC(qlat0,qlon0,qdep0,npick,tt,ip,slat,slon, &
-           qlat,qlon,qdep,qorg,TTtabfile,boxwid,nit,inorm,fracsk,        &
-           qlat1,qlon1,qdep1,torgdif,resid,rms,rmed,resol)
-      implicit none
-
-      integer :: i, iflag, inorm, it, ix, iy, iz, npick, nit
-      
-      real :: boxwid, cosqlat, degrad, degkm, delkm, ddep,  dx, dy, &
-              fdep,  fdepbest,  fitbest, fit, fit2, &
-              fracsk, fdep0,  qdep0,  qdep1,  &
-              qorg1, residmed, resol, rmed, rms, tbest, tdif, tsec1, tsec2, xgap, &
-              torgdif
-      real (kind=8) :: dlat, dlon, flat, flon, flatbest, flonbest, flat0, flon0, &
-                        qlat0, qlon0, qlat1, qlon1
-
-      integer, dimension(npick) :: ip
-      
-      real, dimension(npick) :: qdep, qorg, rabs, resid, tt
-      real (kind=8), dimension(npick) :: qlat, qlon, slat, slon
-
-      character*100 TTtabfile(2)
-!
-
-      degrad = 180./3.1415927
-      degkm = 111.19493
-
-!      print *,'In the subroutine GROUPLOC ...'
-
-    ! define initial search box
-      dlat=0.5*boxwid/degkm
-      cosqlat=cos(qlat0/degrad)
-      dlon=dlat/cosqlat
-      ddep=0.5*boxwid
-
-      flat0=qlat0
-      flon0=qlon0
-      fdep0=qdep0
-
-      flatbest=qlat0
-      flonbest=qlon0
-      fdepbest=qdep0
-
-    ! start iterations
-      do 100 it=1,nit
-
-    ! start grid search over trial locations f1, f2 for best fit (3x3 grid for this iteration's box)
-      fitbest=9.e20
-      do 60 iy=-1,1
-         flat=flat0+dlat*float(iy)
-         do 50 ix=-1,1
-            flon=flon0+dlon*float(ix)
-            do 40 iz=-1,1
-               fdep=fdep0+ddep*float(iz)
-!               if (fdep.lt.0.) fdep=0.001                   !***now permit negative depths
-        
-        ! compute predicted travel time and residual with observed  
-               do 20 i=1,npick
-                  dy=flat-slat(i)
-                  dx=(flon-slon(i))*cosqlat
-                  delkm=sqrt(dx**2+dy**2)*degkm
-                  call GET_TTS_FAST8(TTtabfile(ip(i)),ip(i),delkm,fdep,tsec1,iflag)
-                  if (iflag.eq.-1) then
-                     print *,'***DIFLOC warn1', ip(i),delkm, fdep
-                     resid(i) = 9.
-                     go to 20
-                  endif
-                  
-                  
-                  dy=qlat(i)-slat(i)                  !for speed, this block could be done once before loops
-                  dx=(qlon(i)-slon(i))*cosqlat
-                  delkm=sqrt(dx**2+dy**2)*degkm
-                  call GET_TTS_FAST8(TTtabfile(ip(i)),ip(i),delkm, qdep(i),tsec2,iflag)
-                  tsec2 = tsec2 + qorg(i)                    !***new to this version
-     
-     
-                  if (iflag.eq.-1) then
-                     print *,'***DIFLOC warn2 ', ip(i),delkm,qdep(i) 
-                     resid(i) = 9.                  
-                     go to 20
-                  endif
-                  tdif=tsec2-tsec1
-
-                  resid(i)=tt(i)-tdif
-!                  print *,'DIFLOC=',tt(i),tdif,resid(i)
-20             continue
-
-               if (inorm .eq. 1) then         ! L1 NORM
-               call MEDIAN(resid,npick,residmed)
-               else if (inorm .eq. 2) then    ! L2 NORM
-               call MEAN(resid,npick,residmed)
-               else if (inorm .eq. 3) then    ! robust L2 NORM
-               xgap=0.1
-               call ROBOMEAN2(resid,npick,xgap,10,residmed,fit2)
-               end if
-
-               fit=0.
-               if (inorm .eq. 1) then
-                  do 30 i=1,npick
-                     fit=fit+abs(resid(i)-residmed)
-30                continue
-               else if (inorm .eq. 2) then
-                  do i=1,npick
-                     fit=fit+(resid(i)-residmed)**2
-                  end do
-               else if (inorm .eq. 3) then
-                  fit=fit2
-               end if
-
-               if (fit.lt.fitbest.and.abs(residmed).lt.1.0) then
-                  fitbest=fit
-                  flatbest=flat
-                  flonbest=flon
-                  fdepbest=fdep
-                  tbest=residmed  
-!                  print *,'tbest=',tbest
-               end if
-
-40          continue
-50       continue
-60    continue
-
-      flat0=flatbest
-      flon0=flonbest
-      fdep0=fdepbest 
-      dlat=dlat*fracsk      !shrink box by fracsk each iteration
-      dlon=dlon*fracsk
-      ddep=ddep*fracsk
-
-
-100   continue ! end loop over iteration
-
-    ! output final, best locations
-      qlat1=flat0
-      qlon1=flon0
-      qdep1=fdep0
-      qorg1=tbest
-      resol=(dlat/fracsk)*degkm
-
-    ! output final, best misfit
-      rms=0.
-      do 120 i=1,npick
-      
-        ! for event 1 (alone), compute predicted travel time using best location
-         cosqlat=cos(qlat1/degrad)
-         dy=qlat1-slat(i)
-         dx=(qlon1-slon(i))*cosqlat
-         delkm=sqrt(dx**2+dy**2)*degkm
-         call GET_TTS_FAST8(TTtabfile(ip(i)),ip(i),delkm,qdep1,tsec1,iflag)
-         
-         ! for event 2 (group) compute predicted travel time using best location
-         cosqlat=cos(qlat(i)/degrad)
-         dy=qlat(i)-slat(i)
-         dx=(qlon(i)-slon(i))*cosqlat
-         delkm=sqrt(dx**2+dy**2)*degkm
-         call GET_TTS_FAST8(TTtabfile(ip(i)),ip(i),delkm,qdep(i),tsec2,iflag)
-         
-         ! predicted differential travel time
-         tdif=tsec2-tsec1
-         
-         ! compute residual between observed and predicted differential times
-         resid(i)=tt(i)-tdif-qorg1
-         rms=rms+resid(i)**2 ! update sum of squared errors (used in rms)
-         rabs(i)=abs(resid(i))
-120   continue
-      rms=sqrt(rms/float(npick)) ! compute RMS from SSE
-      
-      ! median/mean/robomean residual
-      if (inorm .eq. 1) then         ! L1 NORM
-      call MEDIAN(rabs,npick,rmed)
-      else if (inorm .eq. 2) then    ! L2 NORM
-      call MEAN(resid,npick,rmed)
-      else if (inorm .eq. 3) then    ! robust L2 NORM
-      xgap=0.1
-      call ROBOMEAN2(resid,npick,xgap,10,rmed,fit2)
-      end if
-      
-      torgdif = qorg1 ! origin time difference
-
-      return
-      end
 
 
 !-----------------------------------------------------------------------

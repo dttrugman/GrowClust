@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2017 Daniel Trugman
+! Copyright 2018 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -56,14 +56,14 @@
 ! edited (2/18/17) to put an extra depth point at zmax km, if vzmodel isn't this deep
 !   this has the effect of making the bottom-most point specify the top of a constant layer from
 !    d(npts) to zmax 
-	  if (d(npts) < zmax) then
-	  	npts = npts + 1
-	  	d(npts) = zmax
-	  	v(npts,1) = v(npts-1,1)
-	  	v(npts,2) = v(npts-1,2)
-	  endif
+      if (d(npts) < zmax) then
+        npts = npts + 1
+        d(npts) = zmax
+        v(npts,1) = v(npts-1,1)
+        v(npts,2) = v(npts-1,2)
+      endif
 ! edited (2/18/17) to return zmin and zmax
-	    zmin = d(1)
+        zmin = d(1)
         zmax = d(npts)
         
 ! interpolate the input model, while preserving layer interfaces
@@ -308,22 +308,22 @@
              end if
 
              ! layer thickness
-             h=z(i+1)-z(i)							 
+             h=z(i+1)-z(i)                           
              if (h.eq.0.) cycle    !skip if interface
              
             ! LAYERTRACE calculates the travel time and range offset for ray tracing through a single layer.
-			!  Input:   p     =  horizontal slowness
-			!           h     =  layer thickness
-			!           utop  =  slowness at top of layer
-			!           ubot  =  slowness at bottom of layer
-			!           imth  =  interpolation method
-			!                    imth = 1,  v(z) = 1/sqrt(a - 2*b*z)  fastest to compute
-			!                         = 2,  v(z) = a - b*z            linear gradient
-			!                         = 3,  v(z) = a*exp(-b*z)        referred when Earth Flattening is applied
-			!  Returns: dx    =  range offset
-			!           dt    =  travel time
-			!           irtr  =  return code (-1: zero thickness layer, 0: ray turned above layer, 
-			!                 =    1: ray passed through layer, 2: ray turned within layer, 1 segment counted)
+            !  Input:   p     =  horizontal slowness
+            !           h     =  layer thickness
+            !           utop  =  slowness at top of layer
+            !           ubot  =  slowness at bottom of layer
+            !           imth  =  interpolation method
+            !                    imth = 1,  v(z) = 1/sqrt(a - 2*b*z)  fastest to compute
+            !                         = 2,  v(z) = a - b*z            linear gradient
+            !                         = 3,  v(z) = a*exp(-b*z)        referred when Earth Flattening is applied
+            !  Returns: dx    =  range offset
+            !           dt    =  travel time
+            !           irtr  =  return code (-1: zero thickness layer, 0: ray turned above layer, 
+            !                 =    1: ray passed through layer, 2: ray turned within layer, 1 segment counted)
              call LAYERTRACE(p,h,slow(i,iw),slow(i+1,iw),imth,dx,dt,irtr) ! compute dx, dt for layer
              
              ! update x,t after tracing through layer
@@ -333,7 +333,7 @@
              ! exit when ray has turned
              if (irtr.eq.0.or.irtr.eq.2) exit  
          
-         	! save current x,t,u for ray sampling source depths (stored in deptab)
+            ! save current x,t,u for ray sampling source depths (stored in deptab)
              do idep=1,ndep
                 if (abs(z_s(i+1)-deptab(idep)).lt.0.1) then
                    depxcor(np,idep)=x
@@ -627,7 +627,7 @@
       end if
 
 
-	  ! qs = vertical slowness: sqrt(u^2-p^2)
+      ! qs = vertical slowness: sqrt(u^2-p^2)
       q=y*(u+p)
       qs=dsqrt(q)
 
@@ -652,7 +652,7 @@
           b=-dlog(ubot/utop)/h   ! flat earth
       end if  
 !
-	  !constant velocity layer
+      !constant velocity layer
       if (b.eq.0.) then                         
          b=1./h
          etau=qs
@@ -661,7 +661,7 @@
          go to 160
       end if
 
-	! ray tracing integral at upper limit, 1/b factor omitted until end
+    ! ray tracing integral at upper limit, 1/b factor omitted until end
       if (imth.eq.1) then
          etau=-q*qs/3.
          ex=-qs*p
@@ -674,7 +674,7 @@
          ex=qr
       end if
 
-	 ! check lower limit to see if we have turning point
+     ! check lower limit to see if we have turning point
       u=ubot
       if (u.le.p) then                                !if turning point,
          irtr=2                                       ! then no contribution

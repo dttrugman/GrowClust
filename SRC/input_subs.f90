@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2017 Daniel Trugman
+! Copyright 2018 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -247,8 +247,10 @@
 !  Inputs:  ievform   =  event list format: 0 for evlist, 1 for phase
 !           evfile    =  event list file name
 !           nq0       =  maximum number of events
+!           maxevid   =  maximum event ID
 !           
 !  Returns: idcusp    =  array(len=nq) of event ID #s (e.g. CUSPID or EVID)
+!           qid2qnum  =  array(len=maxevid) that maps event ID to serial event number
 !           qyr_cat   =  array(len=nq) of event year (from input catalog)
 !           qmon_cat  =  array(len=nq) of event month (from input catalog)
 !           qdy_cat   =  array(len=nq) of event day (from input catalog)
@@ -262,15 +264,18 @@
 !           nq        =  total number of events
 !           min_qdep  =  minimum event depth (from input catalog)
 !           max_qdep  =  maximum event depth (from input catalog)
+!           max_qid   =  maximum event id (from the input catalog)
+
 ! 
 !-----------------------------------------------------------------------------------------
-   subroutine READ_EVFILE(ievform, evfile, nq0, idcusp, qyr_cat, qmon_cat, qdy_cat, qhr_cat, &
-    qmn_cat, qsc_cat, qmag_cat, qlat_cat, qlon_cat, qdep_cat, nq, min_qdep, max_qdep)
+   subroutine READ_EVFILE(ievform, evfile, nq0, maxevid, idcusp, qid2qnum, qyr_cat, qmon_cat, &
+    qdy_cat, qhr_cat, qmn_cat, qsc_cat, qmag_cat, qlat_cat, qlon_cat, qdep_cat, nq, min_qdep, max_qdep, max_qid)
    
    implicit none
-   integer :: i, nq0, nq, ievform
+   integer :: i, nq0, nq, ievform, maxevid, max_qid
    real :: EH_cat, EZ_cat, RMS_cat, min_qdep, max_qdep
    integer, dimension(nq0) :: idcusp
+   integer, dimension(maxevid) :: qid2qnum
    real, dimension(nq0) ::  qdep_cat
    real (kind=8), dimension(nq0) ::  qlat_cat, qlon_cat
    integer, dimension(nq0) :: qyr_cat, qmon_cat, qdy_cat, qhr_cat, qmn_cat
@@ -294,7 +299,8 @@
    
    ! read, line by line
    min_qdep = 10000.
-   max_qdep = -10000. 
+   max_qdep = -10000.
+   max_qid = 0 
    do i = 1, nq0
    
     if (ievform == 0) then   ! evlist format
@@ -322,14 +328,26 @@
     
     endif
     
-    ! update min, max depth
+    ! update min, max depth, max id
     if (qdep_cat(i) > max_qdep) max_qdep = qdep_cat(i)
     if (qdep_cat(i) < min_qdep) min_qdep = qdep_cat(i)
+    if (idcusp(i) > max_qid)    max_qid = idcusp(i)
+    
+    ! update qid2qnum (added 07/2018, helps with fast lookups)
+    if (max_qid > maxevid) then
+        print *, '***ERROR, event id is too large', idcusp(i)
+        print *, 'Increase maxevid parameter in grow_params.f90'
+        print *, 'Ending program'
+        close(12)
+        stop
+    else
+        qid2qnum(idcusp(i)) = i
+    endif 
     
     ! print 1st 10 events
     if (i < 11) print 8, idcusp(i), qyr_cat(i), qmon_cat(i), qdy_cat(i), qhr_cat(i), &
              qmn_cat(i), qsc_cat(i), evtype, qmag_cat(i), qmagtype, &
-             qlat_cat(i), qlon_cat(i), qdep_cat(i)
+             qlat_cat(i), qlon_cat(i), qdep_cat(i), qid2qnum(idcusp(i))
               
    enddo
    i = nq0 + 1
@@ -342,6 +360,214 @@
 
   end
   
+!-------------------------------------------------------------
+! **** READ_STLIST reads the input station list and returns vectors of 
+! ****  station names, station lats, and station lons. The stations are 
+! ****  sorted for quick lookup operations. A key array is also returned
+! ****   that tracks the first instance each letter occurs in the sorted stlist.
+! ****      - This is a new subroutine added 07/2018
+!
+!  Inputs:  stfile    =  site list file name
+!           istform   =  site list format (0 or 1) 
+!           nsta0     =  maximum number of stations
+!           
+!  Returns: stnames   =  array(len=nsta) of 5 char station names, sorted
+!           stlats  =  array(len=nsta) of station latitudes, sorted
+!           stlons  =  array(len=nsta) of station longitudes, sorted
+!           nsta      = total number of stations
+!           stkey     = array(len=256) that tracks index w/in stnames that a letter first appears
+!                         This is useful to quickly look up a station name
+! 
+!-----------------------------------------------------------------------------------------
+   subroutine READ_STLIST(stfile, istform, nsta0, &
+           stnames, stlats, stlons, nsta, stkey)
+    
+    ! define variables
+    implicit none
+    integer, parameter     :: dp=kind(0.d0)   
+    integer :: nsta0, istform, i, j, k, nsta
+    real :: rr
+    real(dp), dimension(nsta0) :: stlats00, stlons00, stlats, stlons
+    character (len=100) :: stfile, linebuf
+    character (len=5), dimension(nsta0) :: stnames00, stnames
+    real, dimension(nsta0) :: stnums00, stnums
+    integer, dimension(nsta0) :: isort
+    integer, dimension(256) :: stkey
+    
+    
+    ! open site list
+    open (19,file=stfile,status='old')
+    
+    ! loop over station lines
+    do i=1,nsta0
+       
+       ! stlist format
+       if (istform==0) then 
+    
+         stnames00(i)='     '
+         read (19,13,end=12) stnames00(i)(1:5), stlats00(i), stlons00(i)
+13             format (3x,a5,10x,f10.5,f12.5)
+    
+        ! stations.dat format
+        else if (istform==1) then 
+        
+           stnames00(i)='     '
+           read(19, '(a100)', end=12) linebuf
+           
+           ! check to see if in NW_STNAME format
+           if (linebuf(3:3)== ' ' .and. linebuf(1:1) .ne. ' ') then
+             
+             ! if so, only copy over STNAME
+             do j = 4,8
+              if (linebuf(j:j) == ' ') exit
+              stnames00(i)(j:j) = linebuf(j:j)
+             enddo
+             
+           else ! nope: STNAME only
+           
+            ! skip the blanks at the beginning
+            do j = 1,12
+              if (linebuf(j:j) .ne. ' ') exit
+            enddo
+            k = j
+            
+            ! now copy over STNAME (output starting a char 4, until input blank or at 5 char)
+            do j = 1,5
+              if (linebuf(j:j) == ' ') exit
+              stnames00(i)(j:j) = linebuf(k+j-1:k+j-1)
+            enddo
+           
+           endif
+           
+           ! now read latitude and longitude
+           read(linebuf(k+j:100), *) stlats00(i), stlons00(i) 
+
+        ! unlisted station type
+        else
+            print *, 'Error! Undefined station list type!'
+            print *, istform
+            stop
+                          
+        endif
+    enddo ! -------- end  loop over station lines
+
+
+         ! check that station files doesn't have too many entries...
+         print *,'***Error:  station file has too many entries! Increase nsta0 in grow_params.f90'
+         stop
+
+         ! Close file
+12       nsta=i-1
+         close (19)
+         
+         ! Now compute lexigraphic station numbers (using ichar) --> helps with sort below
+         do k = 1, nsta
+            stnums00(k) = 0
+            rr = 10000.0
+            do j = 1, 5
+                stnums00(k) = stnums00(k) + ichar(stnames00(k)(j:j))*rr
+                rr = rr/100.
+            enddo
+         enddo
+         
+         ! sort station names alphabetically (using station number)
+         call INDEXX(nsta, stnums00, isort)
+         do k = 1, nsta
+            stnames(k)(1:5) = stnames00(isort(k))(1:5)
+            stlats(k) = stlats00(isort(k))
+            stlons(k) = stlons00(isort(k))
+            stnums(k) = stnums00(isort(k))
+         enddo 
+    
+         
+         ! print sorted stations
+         print *,'Station locations read.  Nsta = ', nsta 
+         do k = 1, nsta
+            !write(*, '(a5, 1x, f10.4, f10.4, f16.6)') stnames(k), stlats(k), stlons(k), stnums(k)
+            write(*, '(i3, 1x, a5, 1x, f10.4, f10.4)') k, stnames(k), stlats(k), stlons(k)
+         enddo
+         print *, '=================================================='
+         
+        ! get first instance of each letter within sorted stlist --> helps with fast lookup
+        !   note that numeric values are before capital letters, i.e.:
+        !     - ichar(' ') = 32
+        !     - ichar('0') = 48, ichar('9') = 57
+        !     - ichar('A') = 65, ichar('Z') = 90
+         
+         ! initialize keys
+         do j = 1,256
+            stkey(j) = 0
+         enddo
+         
+         ! now get the first instance of each character within the station array
+         print *, 'Station lookup keys'
+         do k = 1, nsta
+            j = ichar(stnames(k)(1:1))
+            if (stkey(j) == 0) then
+                stkey(j) = k
+                print *, k, stnames(k)(1:5), j, "<-->", stnames(k)(1:1)
+            endif
+         enddo
+        
+end subroutine READ_STLIST
+
+
+!-------------------------------------------------------------
+! **** LOOKUP_STA searches the site list for a given station name, returning 
+! ****    its latitude and longitude. This version assumes a alphabetized station
+! ****     list for rapid lookup
+! ****      - This is a new subroutine added 07/2018
+!
+!  Inputs : stname    =  5-char station name to search for
+!           nsta      =  total number of stations
+!           snames   =  array(len=nsta) of 5 char station names, sorted
+!           slats     =  array(len=nsta) of station latitudes, sorted
+!           slons     =  array(len=nsta) of station longitudes, sorted
+!           skeys     =  array(len=256) that tracks index w/in stnames that a letter first appears
+!                         This is useful to quickly look up a station name
+!           
+!  Returns: slat      = station latitude corresponding to stname (-999 is no match)
+!           slon      = station longitude corresponding to stname (-999 is no mathc)
+! 
+!-----------------------------------------------------------------------------------------
+
+subroutine LOOKUP_STA(stname, nsta, snames, skeys, slats, slons, slat, slon)
+
+   ! declare variables
+   implicit none
+   integer, parameter     :: dp=kind(0.d0)                   ! double precision
+   integer :: i, isite, istart, nsta
+   real(dp) :: slat, slon
+   real(dp), dimension(nsta) :: slats, slons
+   character (len=5), dimension(nsta) :: snames
+   character (len=5) :: stname
+   integer, dimension(256) :: skeys
+   
+   ! these are defaults that imply no match
+   slat = -999.
+   slon = -999.
+   
+   ! character index for fast lookup
+   isite = ichar(stname(1:1))
+   
+   ! position in sorted site name array to start search
+   istart = skeys(isite) ! alphabetical start --> use skeys
+   if (istart == 0) istart = 1 ! for robustness
+   
+   ! look for station match
+   do i = istart, nsta
+      if (stname(1:5) == snames(i)(1:5)) then
+         slat= slats(i)
+         slon= slons(i)
+         return
+      endif
+   enddo
+
+end subroutine LOOKUP_STA
+
+
+
+  
 !-------------------------------------
 !-----------------------------------------------------------------------------------------
 !  **** READ_XCORDATA reads cross-correlation data from an input file and organizes into
@@ -350,14 +576,13 @@
 !   two sizes: npair for event-pair arrays and nk for phase (tdif) arrays.
 !
 !  Inputs:  irxform   =  xcor data file format: 0 for xcortobin 
-!           istform   =  station list format: 0 for stlist.filtefs 
 !           it12form  =  sign convention for tdif: 12 (tt1-tt2) or 21 (tt2-tt1)
 !           xcorfile  =  xcor data file name
-!           stfile    =  station list file name
 !           npair0    =  maximum number of event pairs
 !           ndif0     =  maximum number of differential times
 !           nq        =  total number of events
-!           idcusp    =  event IDs
+!           max_qid   =  maximum event id
+!           qid2qnum  =  array that maps event IDs to serial event number
 !           qlat      =  event latitude
 !           qlon      =  event longitude
 !           rmincut   =  minimum rxcor value to keep differential time
@@ -366,6 +591,11 @@
 !           rpsavgmin =  minimum avg. rxcor for event pair to keep differential times
 !           iponly    =  0 = use P and S differential times, iponly: 1 = use P only
 !           ngoodmin  =  minimum number of differential times with rxcor > rmin_ngood to keep event pair
+!           nsta      =  number of stations in statin list
+!           slnames   =  array (len=nsta) of 5-char station names 
+!           sllats    =  array (len=nsta) of station lats
+!           sllons    =  array (len=nsta) of station lons
+!           slkeys    =  key array to help with station search
 !           
 !  Returns: npair     =  actual number of event pairs kept
 !           nk        =  actual number of differential times kept
@@ -375,7 +605,7 @@
 !           idcusp22  =  array(len=npair) of event ID #s (e.g. CUSPID) for event j in pair i,j
 !           index1    =  array(len=npair) of starting indices of tdif observations for pair i,j in the tdif arrays
 !           index2    =  array(len=npair) of ending indices of tdif observations for pair i,j in the tdif arrays
-!           stname    =  array(len=nk) of station names for each tdif observation
+!           stname    =  array(len=nk) of 5-char station names for each tdif observation
 !           ipp       =  array(len=nk) of phase (1=P, 2=S) for each tdif observation
 !           tdif      =  array(len=nk) of differential times (tt_j-tt_i) for each tdif observation
 !           rxcor     =  array(len=nk) of cross-corr. coefficient for each tdif observation
@@ -384,8 +614,9 @@
 !           slon      =  array(len=nk) of station longitudes for each tdif observation
 !-----------------------------------------------------------------------------------------
 
-   subroutine READ_XCORDATA(irxform, istform, it12form, xcorfile, stfile, npair0, ndif0,&
-     nq, idcusp, qlat, qlon, rmincut, rmin_ngood, delmax, rpsavgmin, iponly, ngoodmin, & 
+   subroutine READ_XCORDATA(irxform, it12form, xcorfile, npair0, ndif0, nq,  &
+     max_qid, qid2qnum, qlat, qlon, rmincut, rmin_ngood, delmax, rpsavgmin,  &
+     iponly, ngoodmin, nsta, slnames, sllats, sllons, slkeys, &
      npair, nk, iqq1, iqq2, idcusp11, idcusp22, index1, index2, &
      stname, ipp, tdif, rxcor, dist, slat, slon)
     
@@ -397,7 +628,7 @@
     real(dp), parameter    :: degkm = 111.1949266_dp
 !------------------------------------------------   
     
-    integer :: irxform, istform, it12form, npair0, ndif0, npair, nk, iponly, ngoodmin
+    integer :: irxform, it12form, npair0, ndif0, npair, nk, iponly, ngoodmin
     integer :: ngoodminB, iponlyB, input_ok, npairB, nkB, ix1, ix2, ip, k, nq, is, ss
     integer ::  kk, k1, k2, qnum1, qnum2, qcusp1, qcusp2, j, ngood_pr, nkeep_pr
     integer :: iq1Bmax, iq2Bmax
@@ -408,13 +639,14 @@
     integer, dimension(npair0) :: idcusp11, idcusp22, index1, index2, iqq1, iqq2
     integer, dimension(npair0) :: idcusp11B, idcusp22B, index1B, index2B, iqq1B, iqq2B
     integer, dimension(ndif0) :: ipp, ippB
-    integer, dimension(nq) :: idcusp
+    
     real, dimension(ndif0) :: rxcor, tdif, dist, rxcorB, tdifB, distB
     real(dp), dimension(nq) :: qlat, qlon
     real(dp), dimension(ndif0) :: slat, slon
-    character (len=100) :: xcorfile, stfile, linebuf
-    character (len=12), dimension(ndif0) :: stname, stnameB
-    character (len=12) :: stname_kk
+    character (len=100) :: xcorfile, linebuf
+    character (len=12), dimension(ndif0) :: stnameB
+    character (len=5), dimension(ndif0) :: stname
+    character (len=10) :: stname_kk
     character (len=1) :: ippchar
     integer :: npair_cut=0, nk_cut=0
     
@@ -423,13 +655,15 @@
     real(dp), dimension (1000) :: slat_pr, slon_pr 
     character (len=12), dimension(1000) :: stname_pr
     
+    ! added July 2018
+    integer :: max_qid, nsta
+    integer, dimension(max_qid) :: qid2qnum
+    character (len=5), dimension(nsta) :: slnames
+    real(dp), dimension (nsta) :: sllats, sllons
+    integer, dimension(256) :: slkeys
+    
      
     ! check for invalid file types
-    if (istform > 1) then
-        print *, 'Error! Unknown station format! istat = ' , istform
-        print *, 'Ending program'
-        stop
-    endif
     if (irxform > 1) then
         print *, 'Error! Unknown xcor data format! ixcor = ' , irxform
         print *, 'Ending program'
@@ -453,36 +687,36 @@
             ! some tests check if desired run params are equal, others are one-sided
             ! (it's ok if rmin > rminB, but not if rmin < rminB)
        input_ok = 1
-       !if ( rmincut < rmincutB  ) then
        if ( (rmincut .ne. 0) .and. (rmincut-rmincutB < -0.001) ) then
          print *, 'Error! Desired rmin inconsistent with binary xcor file (too low).'
          print *, 'Desired rmin, binary rmin, binary rmin = ', rmincut,rmincutB
          input_ok = 0
        endif      
-       !if (delmax < delmaxB ) then
+
        if ( (delmax .ne. 0 ) .and. (delmax-delmaxB < -0.001)) then
           print *, 'Error! Desired delmax inconsistent with binary xcor file (too low).'
           print *, 'Desired delmax, binary delmax = ', delmax, delmaxB
           input_ok = 0
        endif
-       !if (rpsavgmin < rpsavgminB) then
+       
        if ((rpsavgmin .ne. 0) .and. (rpsavgmin-rpsavgminB < -0.001)) then
           print *, 'Error! Desired rpsavgmin inconsistent with binary xcor file (too low).'
           print *, 'Desired rpsavgmin, binary rpsavgmin = ', rpsavgmin, rpsavgminB
           input_ok = 0
        endif
-       !if ( rmin_ngood < rmin_ngoodB ) then
+       
        if ( (rmin_ngood .ne. 0) .and. (rmin_ngood-rmin_ngoodB < -0.001) ) then
          print *, 'Error! Desired rmin_ngood inconsistent with binary xcor file (too low).'
          print *, 'Desired rmin_ngood, binary rmin_ngood = ', rmin_ngood, rmin_ngoodB
          input_ok = 0
        endif 
-       !if (ngoodmin < ngoodminB) then
+       
        if ((ngoodmin .ne. 0) .and. (ngoodmin < ngoodminB)) then
           print *, 'Error! Desired ngoodmin inconsistent with binary xcor file (too low).'
           print *, 'Desired ngoodmin, binary ngoodmin = ', ngoodmin, ngoodminB
           input_ok = 0
        endif      
+       
        if (iponly .ne. iponlyB) then
           print *, 'Error! Desired iponly inconsistent with binary xcor file (not equal).'
           print *, 'Desired iponly, binary iponly = ', iponly, iponlyB
@@ -531,6 +765,7 @@
    
        ! finally, read xcor arrays (length nk)
             ! note that index1, index2 (above) map events to min/max indices in xcor arrays
+            ! the stnames here are 12-char, we want the station name only
        read (14) stnameB(1:nkB), ippB(1:nkB), tdifB(1:nkB), rxcorB(1:nkB), distB(1:nkB)
        
        close (14)
@@ -538,14 +773,17 @@
        
        
        ! now loop over pairs, decide which observations to keep ---------------------
-        ! initialized indices, npair, nk
-        k1 = 0
-        k2 = 0
-        npair = 0
-        nk = 0
-        kk = 0
-        npair_cut = 0
-        nk_cut = 0
+         ! initialized indices, npair, nk
+       k1 = 0
+       k2 = 0
+       npair = 0
+       nk = 0
+       kk = 0
+       npair_cut = 0
+       nk_cut = 0
+       rps_pr = 0.0
+       ngood_pr = 0
+       nkeep_pr = 0
        print *, 'Selecting data from binary file...'
        
        print *, 'Selection parameters:'
@@ -619,7 +857,8 @@
                   tdif(k2) = tdifB(k) ! note: sign convention should be ok b/c read from xcorbin file
                   ipp(k2) = ippB(k)
                   dist(k2) = distB(k)
-                  stname(k2)(1:12) = stnameB(k)(1:12)
+                  stname(k2) = '     '
+                  stname(k2)(1:5) = stnameB(k)(4:8) ! copy over station name only
                  endif
               enddo
           
@@ -649,9 +888,9 @@
     print *, 'npair_kept, nk_kept = ', npair, nk !
     print *, 'npair_cut, nk_cut = ', npair_cut, nk_cut 
        
-    ! get station locations
+    ! get station locations: Fast lookup with alphabetized stlist, added 07/2018
       do k = 1, nk
-        call GETSTAT_STLIST(stfile, stname(k), slat(k), slon(k), istform)
+        call LOOKUP_STA(stname_pr(kk), nsta, slnames, slkeys, sllats, sllons, slat(kk), slon(kk))
         if (slat(k) < -99.) then
          print *,'ERROR: station not found, stname = ', stname(k)
          print *, 'Ending program: xcor data and station list inconsistent'
@@ -675,6 +914,10 @@
      kk = 0
      npair_cut = 0
      nk_cut = 0
+     rps_pr = 0.0
+     ngood_pr = 0
+     nkeep_pr = 0
+     
      
      ! read file, line by line
      do j = 1, ndif0
@@ -709,36 +952,45 @@
               dist(k2) = dist_pr(k)
               slat(k2) = slat_pr(k)
               slon(k2) = slon_pr(k)
-              stname(k2)(1:12) = stname_pr(k)(1:12)
+              stname(k2)(1:5) = stname_pr(k)(1:5)
              endif
           enddo
           
           ! index2(npair) gives the end index for this pair in the tdif arrays
-          index2(npair) = k2  
+          index2(npair) = k2
+          
+         ! print out every 10000 or so pairs to update progress (added 07/2018)
+         if (mod(npair, 10000) == 0) then
+            print *, 'Finished reading pair ', npair
+            print *, qcusp1, qcusp2
+         endif 
+ 
         
         elseif (j > 1) then ! skip first entry
-    
            
           npair_cut = npair_cut+1 ! increment counted number of cut pairs
           
           ! increment counted number of cut differential times
              do k = 1, kk
-            	if (keepkk_pr(k)>0) then
-            		keepkk_pr(k) = 0
-            		nk_cut = nk_cut + 1
-            	endif
+                if (keepkk_pr(k)>0) then
+                    keepkk_pr(k) = 0
+                    nk_cut = nk_cut + 1
+                endif
             enddo
            
         
-        endif  ! endif on goodpair
+        endif  ! endif on goodpair----------
         
         ! ok, move on to the new pair ---------------
         read(linebuf(2:100), *), qcusp1, qcusp2, otc12 ! (note that we don't need the origin
                                                        ! time correction b/c we don't mix xcor 
                                                        ! and catalog differential times)
         
-        ! look up serial ID numbers (1:nq), given cuspID
-        call LOOKUP_PAIR(qcusp1, qcusp2, nq, idcusp, qnum1, qnum2) 
+        !!! look up serial ID numbers (1:nq), given cuspID
+        !call LOOKUP_PAIR(qcusp1, qcusp2, nq, idcusp, qnum1, qnum2) !OLD, slow for large datasets
+        ! fast version, added 06/2018
+        qnum1 = qid2qnum(qcusp1)
+        qnum2 = qid2qnum(qcusp2) 
         
         ! check for missing events...
         if ((qnum1 < 1) .or. (qnum2 < 1)) then
@@ -764,18 +1016,19 @@
         kk = kk + 1 ! increment nobs within pair
         
         ! get station name, tdif, rxcor, and phase character (P or S)
-        stname_pr(kk)(1:12) = '            ' ! initialize name with blanks 
-        read(linebuf(1:7), '(a7)') stname_kk(1:7) ! assumes 7 char, right-justified stname
+         
+        read(linebuf(1:10), '(a10)') stname_kk(1:10) ! assumes right-justified stname
         
         ! skip blanks at beginning
-        do is = 1,7
+        do is = 1,10
           if (stname_kk(is:is) .ne. ' ') exit
         enddo
         
-        ! copy over to stname starting with its 4th char
-        do ss = is,7
+        ! copy over to stname_pr
+        stname_pr(kk)(1:5) = '     ' ! initialize name with blanks
+        do ss = is,is+4
          if (stname_kk(ss:ss) .eq. ' ') exit
-         stname_pr(kk)(4+ss-is:4+ss-is) = stname_kk(ss:ss)
+         stname_pr(kk)(ss-is+1:ss-is+1) = stname_kk(ss:ss)
         enddo
         
         
@@ -793,10 +1046,11 @@
         
         ! ---- get station distance ------
         
-        call GETSTAT_STLIST(stfile, stname_pr(kk), slat_pr(kk), slon_pr(kk), istform)
-        
+        ! fast lookup using the alphabetized station list
+        call LOOKUP_STA(stname_pr(kk), nsta, slnames, slkeys, sllats, sllons, slat_pr(kk), slon_pr(kk))
+                
         ! make sure station exists....
-        if (slat(kk) < -99.) then
+        if (slat_pr(kk) < -99.) then
          print *,'ERROR: station not found, stname = ', stname_pr(kk)
          print *, 'Ending program: xcor data and station list inconsistent'
          close(14)
@@ -813,7 +1067,7 @@
         !---------------------------------
         
         ! now check to see if we should a) keep this observation, and if so, if b) it is a "good" observation
-        !   a) keep criteria: P-phase if iponly == 1 AND r >= rmin 
+        !   a) keep criteria: r >= rmin AND if iponly == 1, must be P-phase
         !   b) good criteria: keep criteria AND r >= rmin_ngood AND del <= delmax
         ! ----------
         rps_pr = rps_pr+rxcor_pr(kk) ! increment running sum of rps_pr (even if we don't keep...)
@@ -831,22 +1085,14 @@
            keepkk_pr(kk) = 1
            
            ! now test if it's "good"
-           if ((rxcor_pr(kk) >= rmin_ngood) .and. (dist_pr(kk) <= delmax)) then ! good: must have rxcor > rmin and dist < delmax
+           ! good: must have rxcor > rmin and dist < delmax
+           if ((rxcor_pr(kk) >= rmin_ngood) .and. (dist_pr(kk) <= delmax)) then 
             ngood_pr = ngood_pr + 1 ! good observation
            endif
            
         endif 
         
-!       ! print out every 1000 or so pairs to check
-!         if (mod(npair, 1000) == 0) then
-!           if (kk==1) then
-!             print *, 'kept pair # ', npair
-!             print *, qcusp1, qcusp2, otc12
-!           endif 
-!            print *, stname_pr(kk)(1:7),  tdif_pr(kk), rxcor_pr(kk), &
-!             dist_pr(kk), ipp_pr(kk)
-!         endif
-          
+
       endif !------------- close if statement for event/phase line --------
        
      enddo !------------------ end loop over file lines---------------------------------------------
@@ -888,7 +1134,7 @@
               dist(k2) = dist_pr(k)
               slat(k2) = slat_pr(k)
               slon(k2) = slon_pr(k)
-              stname(k2)(1:12) = stname_pr(k)(1:12)
+              stname(k2)(1:5) = stname_pr(k)(1:5)
              endif
           enddo
           
@@ -898,15 +1144,15 @@
           else ! cut pair and update npair_cut, nk_cut
              npair_cut = npair_cut + 1
              do k = 1, kk
-            	if (keepkk_pr(k)>0) then
-            		keepkk_pr(k) = 0
-            		nk_cut = nk_cut + 1
-            	endif
+                if (keepkk_pr(k)>0) then
+                    keepkk_pr(k) = 0
+                    nk_cut = nk_cut + 1
+                endif
             enddo
          
-          endif  ! endif on goodpair
+          endif  ! endif on last pair-----------------
           
-       
+     ! print statistics --------  
      nk = k2
      print *, 'Finished processing xcor text file: ', xcorfile
      print *, 'npair, nk = ', npair, nk
@@ -919,8 +1165,8 @@
      write (*, 407) iqq1(ip), idcusp11(ip), iqq2(ip), idcusp22(ip) 
 407    format (i8, 1x, i9,'   <----> ', i8, 1x, i9 )
      do k = index1(ip), index2(ip)
-      write (*, 408) stname(k)(1:12), ipp(k), tdif(k), rxcor(k), dist(k)
-408    format (a12, 1x, i2, 1x, f7.3, 1x, f7.3, 1x, f10.3)
+      write (*, 408) stname(k)(1:5), ipp(k), tdif(k), rxcor(k), dist(k)
+408    format (a5, 1x, i2, 1x, f7.3, 1x, f7.3, 1x, f10.3)
      enddo
    enddo     
    
@@ -928,156 +1174,13 @@
    return
    end
    
-   
-!-----------------------------------------------------------------------
-!  **** GETSTAT_STLIST gets station location from stlist file generated
-!  from sactogfs_stp program.  It uses only first 7 characters of
-!  12 character station name. (This is ok because we are unconcerned
-!  with channels at this point).
-
-!  Inputs:  stfile  =  name of station list (unsorted)
-!           snam    =  char*12 station code
-!           iform   =  station format (0 = evlist)
-
-!  Returns: flat    =  station latitude (-999. if no match)
-!           flon    =  station longitude
-!-----------------------------------------------------------------------
-!
-      subroutine GETSTAT_STLIST(stfile,snam,flat,flon,iform)
-      implicit none
-
-      integer i, iform, j, k, ss
-      integer nsta
-
-      real*8 flat
-      real*8 flon
-      real*8 slat(5000)
-      real*8 slon(5000)
-
-      character*12 snam
-      character*100 stfile
-!      character*12 stname(5000)
-      character*15 stname(5000)
-      character*100 linebuf
-
-      logical firstcall
-      save firstcall,stname,slat,slon,nsta
-      data firstcall/.true./
-!
-      if (firstcall) then
-         firstcall=.false.
-         open (19,file=stfile,status='old')
-         do i=1,5000
-         
-            if (iform==0) then !iform=0 for stlist format
-            
-               stname(i)='               '
-               read (19,13,end=12) stname(i)(4:8), &
-                    slat(i),slon(i)
-13             format (3x,a5,10x,f10.5,f12.5)
-
-            elseif (iform==1) then ! stations.dat format
-            
-               stname(i)='               '
-               read(19, '(a100)', end=12) linebuf
-               
-               ! check to see if in NW_STNAME format
-               if (linebuf(3:3)== ' ' .and. linebuf(1:1) .ne. ' ') then
-                 
-                 ! if so, only copy over STNAME
-                 do j = 4,8
-                  if (linebuf(j:j) == ' ') exit
-                  stname(i)(j:j) = linebuf(j:j)
-                 enddo
-                 
-               else ! nope: STNAME only
-               
-                ! skip the blanks at the beginning
-                do j = 1,12
-                  if (linebuf(j:j) .ne. ' ') exit
-                enddo
-                k = j
-                
-                ! now copy over STNAME (output starting a char 4, until input blank or at 5 char)
-                do j = k,k+4
-                  if (linebuf(j:j) == ' ') exit
-                  ss = 4+(j-k)
-                  stname(i)(ss:ss) = linebuf(j:j)
-                enddo
-               endif
-               
-               ! now read latitude and longitude
-               read(linebuf(j:100), *) slat(i), slon(i) 
-
-            else
-               read (19,11,end=12) stname(i),slat(i),slon(i)
-11             format (a15,3x,f10.5,f12.5)                   
-            endif
-         enddo
-         print *,'***Warning:  station file has more than 5000 lines'
-         i=5001
-12       nsta=i-1
-         close (19)
-         print *,'Station locations read.  Nsta = ', nsta 
-         print *, '     (may include repeats for channels...)'
-         do k = 1, nsta
-            write(*, '(a12, f10.4, f10.4)') stname(k), slat(k), slon(k)
-         enddo
-      end if
-
-      do 30 i=1,nsta
-         if (snam(4:8) .eq. stname(i)(4:8)) then     !***only check station name part, max = 5 chars
-            flat=slat(i)
-            flon=slon(i)
-            return
-         endif
-30    continue
-      print *,'***GETSTAT_STLIST station not found ',snam
-
-      flat = -999.
-      flon = -999.
-      return
-      end
-   
-   !-----------------------------------------------------------------------
-
-!-----------------------------------------------------------------------
-!  **** LOOKUP_PAIR looks up serial ID numbers (1:nq) for an event pair, given
-! their cuspids and an array (length nq) of cuspids, in serial order 
-!
-!  Inputs:  qcusp1  =  event ID (not serial) of first event in pair
-!           qcusp2  =  event ID (not serial) of first event in pair
-!           nq      =  total number of events in idcusp array
-!           idcusp  =  array of event IDs (not serial, e.g. cuspids)
-
-!  Returns: qnum1   = serial number of event 1 (-1 means not found)
-!           qnum2   = serial number of event 2 (-1 means not found)
-
-    subroutine LOOKUP_PAIR(qcusp1, qcusp2, nq, idcusp, qnum1, qnum2)
-    
-    implicit none
-    integer :: k, qcusp1, qcusp2, nq, qnum1, qnum2
-    integer, dimension(nq) :: idcusp
-    
-    ! neither are found yet
-    qnum1 = -1
-    qnum2 = -1
-    
-    ! check each idcusp in sequence (could be speeded up...)
-    do k = 1, nq
-    
-      if (idcusp(k) == qcusp1) qnum1 = k
-      if (idcusp(k) == qcusp2) qnum2 = k
-      
-      if (qnum1 > 0 .and. qnum2 > 0) exit ! break loop once both found
-
-    enddo
-    
-    return
-    end   
-      
 
    
+   !!! TODO !!!
    
+   ! update manual (V1.2)
+   ! modify shrinking box and shallow depth stuff
+   ! test
+   ! update manual (V1.2)
    
       

@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2017 Daniel Trugman
+! Copyright 2018 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -420,7 +420,7 @@ end subroutine DPMEAN_STDDEV
 
 !------------------------------------------------------------------
 ! **** INDEXX returns an array of indices INDX, sorted low to high
-! ****** based on values in ARRIN 
+! ****** based on values in real array ARRIN 
 !------------------------------------------------------------------
       SUBROUTINE INDEXX(N,ARRIN,INDX)
       DIMENSION ARRIN(N),INDX(N)
@@ -451,6 +451,49 @@ end subroutine DPMEAN_STDDEV
             IF(ARRIN(INDX(J)).LT.ARRIN(INDX(J+1)))J=J+1
           ENDIF
           IF(Q.LT.ARRIN(INDX(J)))THEN
+            INDX(I)=INDX(J)
+            I=J
+            J=J+J
+          ELSE
+            J=IR+1
+          ENDIF
+        GO TO 20
+        ENDIF
+        INDX(I)=INDXT
+      GO TO 10
+      END
+      
+      
+      !! Integer array version of above
+      SUBROUTINE INDEXI(N,IARRIN,INDX)
+      DIMENSION IARRIN(N),INDX(N)
+      DO 11 J=1,N
+        INDX(J)=J
+11    CONTINUE
+      L=N/2+1
+      IR=N
+10    CONTINUE
+        IF(L.GT.1)THEN
+          L=L-1
+          INDXT=INDX(L)
+          Q=IARRIN(INDXT)
+        ELSE
+          INDXT=INDX(IR)
+          Q=IARRIN(INDXT)
+          INDX(IR)=INDX(1)
+          IR=IR-1
+          IF(IR.EQ.1)THEN
+            INDX(1)=INDXT
+            RETURN
+          ENDIF
+        ENDIF
+        I=L
+        J=L+L
+20      IF(J.LE.IR)THEN
+          IF(J.LT.IR)THEN
+            IF(IARRIN(INDX(J)).LT.IARRIN(INDX(J+1)))J=J+1
+          ENDIF
+          IF(Q.LT.IARRIN(INDX(J)))THEN
             INDX(I)=INDX(J)
             I=J
             J=J+J

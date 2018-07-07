@@ -7,7 +7,11 @@ FC = gfortran
 CMD = growclust
 
 # compiler flags for f90 codes
+#  (use -O for optimization)
+#  (use -O -mcmodel=medium or -O -mcmodel=large for large datasets)
+#  (use -fcheck=bounds for testing)
 CFLAGS = -O
+#CFLAGS = -O -mcmodel=medium
 #CFLAGS = -Wall -fcheck=bounds
 
 # object files to link to command file
