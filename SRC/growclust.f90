@@ -318,7 +318,7 @@ program growclust
 ! READ_EVFILE: Read event list to get starting (catalog) locations --------------------
         ! -- accepts different event list formats specified by xcordat_fmt, stlist_fmt 
     print *, ' '
-    print *, 'Reading event list: ' 
+    print *, 'Reading event list...' 
     call READ_EVFILE(evlist_fmt, infile_evlist, nq0, maxevid, idcusp, qid2qnum, qyr_cat, qmon_cat,   &
     qdy_cat, qhr_cat, qmn_cat, qsc_cat, qmag_cat, qlat_cat, qlon_cat, qdep_cat, nq, min_qdep, max_qdep, max_qid)
     
@@ -345,7 +345,7 @@ program growclust
 
     ! READ_STLIST: Reads site list and returns an alphabetized list with locations
     print *, ' '
-    print *, 'Reading station list: '
+    print *, 'Reading station list...'
     call READ_STLIST(infile_stlist, stlist_fmt, nsta0, &
            slnames, sllats, sllons, nsta, slkeys)
 
@@ -353,7 +353,7 @@ program growclust
     ! -- output event pair arrays: iqq1, iqq2, idcusp11, idcusp22, index1, index2
     ! -- output tdif/phase arrays: stname, ipp, tdif, rxcor, dist, slat, slon
     print *, ' '
-    print *, 'Reading xcor data : '
+    !print *, 'Reading xcor data...'
      call READ_XCORDATA(xcordat_fmt, tdif_fmt, infile_xcordat, npair0, ndif0, nq, max_qid, &
      qid2qnum, qlat, qlon, rmincut, rmin, delmax, rpsavgmin, iponly, ngoodmin, & 
      nsta, slnames, sllats, sllons, slkeys, &
@@ -956,7 +956,7 @@ program growclust
 
         ! added for robustness: careful with cluster mergers near surface)
           !if (qdep1 < tt_dep0 .or. qdep2 < tt_dep0) then 
-          if (qdep1 < min_qdep .or. qdep2 < min_qdep) then ! modified 07/2018
+          if (qdep1 < min(0.0,min_qdep) .or. qdep2 < min(0.,min_qdep)) then ! modified 07/2018
              print *, '***rejecting cluster merger (too shallow) ', cdist, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif
              cycle
           endif
@@ -1686,7 +1686,7 @@ endif
    ! fix origin time seconds field, if necessary (added 10/2017)
    qsc_cat(iq) = qsc_cat(iq) + qtimR(iq)
    if ((qsc_cat(iq) < 0.) .or. (qsc_cat(iq) >= 60.0)) then
-       call fix_origin_time( qdy_cat(iq), qhr_cat(iq), qmn_cat(iq), qsc_cat(iq))
+       call fix_origin_time(qyr_cat(iq), qmon_cat(iq), qdy_cat(iq), qhr_cat(iq), qmn_cat(iq), qsc_cat(iq))
    endif
                 
    write (13, 860) qyr_cat(iq), qmon_cat(iq), qdy_cat(iq), qhr_cat(iq), qmn_cat(iq), &
@@ -1763,21 +1763,20 @@ endif
 !--------------------------SUBROUTINES----------------------------------------------------!
 
 ! FIX_ORIGIN_TIME fixes the origin time for output in situations where the corrected seconds field
-!   is negative or greater than 60. (Note: may in very rare circumstances give incorrect results
-!   if the correction switches the origin time to a new day...)
+!   is negative or greater than 60. Improved 07/2018 to account for cases where origin day changes...
 
-subroutine FIX_ORIGIN_TIME(qday, qhr, qmin, qsec)
+subroutine FIX_ORIGIN_TIME(qyr, qmon, qday, qhr, qmin, qsec)
 
     implicit none
     
-    integer qyr, qmon, qday, qhr, qmin
+    integer qyr, qmon, qday, qhr, qmin, ileap, maxday
     real qsec
     
     ! 1. fix seconds field
-    if (qsec < 0) then
+    if (qsec < 0.0) then
         qsec = qsec + 60.0
         qmin = qmin - 1
-    else if (qsec >= 60.) then
+    else if (qsec >= 60.0) then
         qsec = qsec - 60.0
         qmin = qmin + 1 
     else
@@ -1789,7 +1788,7 @@ subroutine FIX_ORIGIN_TIME(qday, qhr, qmin, qsec)
         qmin = qmin + 60
         qhr = qhr - 1
     else if (qmin >= 60) then
-        qmin = qmin -60
+        qmin = qmin - 60
         qhr = qhr + 1 
     else
         return
@@ -1799,12 +1798,59 @@ subroutine FIX_ORIGIN_TIME(qday, qhr, qmin, qsec)
     if (qhr < 0) then
         qhr = qhr + 24
         qday = qday - 1 
-    else if (qmin >= 24) then
+    else if (qhr >= 24) then
         qhr = qhr - 24 
         qday = qday + 1
     else
         return
     endif
+
+   ! Check to see if we have a valid date
+   if ((qday > 0) .or. (qday < 29)) then
+       return
+   endif 
+
+   ! -----------------------------------------------------------
+   ! --- Possibly not, this is where things get complicated....
+   
+   ! test for day < 0: ! fix month here, day will be fixed later
+   if (qday < 1) then 
+       qmon = qmon - 1
+       if (qmon < 1) then ! set previous year
+          qmon = 12
+          qyr = qyr - 1
+       endif
+   endif
+
+   ! decide if leap year
+   if ( mod(qyr,400) == 0) then
+      ileap = 1
+   else if ((mod(qyr,4) == 0) .and. (mod(qyr,100) .ne. 0) )  then
+      ileap = 1
+   else
+      ileap = 0
+   endif
+
+   ! maximum day in month
+   maxday = 31
+   if (qmon == 2) maxday = 28+ileap
+   if (qmon == 4) maxday = 30
+   if (qmon == 6) maxday = 30
+   if (qmon == 9) maxday = 30
+   if (qmon == 11) maxday = 30
+
+   ! fix day field when month has already been decremented
+   if (qday < 1) qday = maxday
+   
+   ! fix day and month fields when month needs to be incremented
+   if (qday > maxday) then
+      qday = 1
+      qmon = qmon + 1
+      if (qmon > 12) then ! set next year
+          qmon = 1
+          qyr = qyr + 1
+      endif 
+   endif
 
 
 end subroutine FIX_ORIGIN_TIME
