@@ -161,7 +161,9 @@ program growclust
     
 ! variables for station listings
     integer :: nsta
+    real :: datum = 0.0
     real(dp), dimension(nsta0) ::  sllats, sllons
+    real, dimension(nsta0) :: slelevs
     character (len=5), dimension(nsta0) :: slnames
     integer, dimension(256) :: slkeys
 
@@ -170,12 +172,11 @@ program growclust
 !---------------------------------------------------------------------------!
    
 !    !----------- Get initial inputs ------------------------!
-   print *, ' '
-   !read (*, '(a)') infile ! reads from command line
-   call getarg(1, infile_ctl) ! reads argument directly
-   open (11, file=infile_ctl, status='old')
-   print *, 'Reading input control file: ', infile_ctl
-   print *, '--------------------------------------------------'
+     print *, ' '
+     call getarg(1, infile_ctl) ! reads argument directly
+     open (11, file=infile_ctl, status='old')
+     print *, 'Reading input control file: ', infile_ctl
+     print *, '--------------------------------------------------'
      
      
      !------- event list format, file name
@@ -347,55 +348,77 @@ program growclust
     print *, ' '
     print *, 'Reading station list...'
     call READ_STLIST(infile_stlist, stlist_fmt, nsta0, &
-           slnames, sllats, sllons, nsta, slkeys)
+           slnames, sllats, sllons, slelevs, nsta, slkeys)
+
+    ! added 07/2018: compute datum adjustment if format == 2
+    if (stlist_fmt==2) then
+
+        call MEAN(slelevs(1:nsta), nsta, datum) ! datum = mean station elevation (m)
+        datum = datum/1000. ! convert to km
+
+        
+       ! now adjust input depths (these will be readjusted on output)
+        do i = 1, nq
+           qdep(i) = qdep(i)+datum
+           qdep_cat(i) = qdep_cat(i)+datum
+           tdep(i) = tdep(i)+datum
+        enddo
+        min_qdep = min_qdep+datum
+        print '(a10, f8.3)', 'New datum:', datum
+        print '(a25, f8.3)', 'New minimum source depth:', min_qdep
+
+    else ! no datum adjustment
+        datum = 0.0
+    endif
 
     ! READ_XCORDATA: Reads xcor data and associated station locations
     ! -- output event pair arrays: iqq1, iqq2, idcusp11, idcusp22, index1, index2
     ! -- output tdif/phase arrays: stname, ipp, tdif, rxcor, dist, slat, slon
     print *, ' '
     !print *, 'Reading xcor data...'
-     call READ_XCORDATA(xcordat_fmt, tdif_fmt, infile_xcordat, npair0, ndif0, nq, max_qid, &
+    call TIMER
+    call READ_XCORDATA(xcordat_fmt, tdif_fmt, infile_xcordat, npair0, ndif0, nq, max_qid, &
      qid2qnum, qlat, qlon, rmincut, rmin, delmax, rpsavgmin, iponly, ngoodmin, & 
      nsta, slnames, sllats, sllons, slkeys, &
      npair, nk, iqq1, iqq2, idcusp11, idcusp22, index1, index2, &
      stname, ipp, tdif, rxcor, dist, slat, slon)
-     
+    call TIMER
      
   ! for robustness, final check to make sure nq, npair, nk are not too large (edit 11/2016)
-  ierror = 0
-  if (nq > nq0) then
+   ierror = 0
+   if (nq > nq0) then
       print *, 'Input error: too many events! Increase nq0 in grow_params.f90...'
       print *, 'nq, nq0 = ', nq, nq0
       ierror = 1
-  endif
-  if (npair > npair0) then
+   endif
+   if (npair > npair0) then
       print *, 'Input error: too many event pairs! Increase npair0 in grow_params.f90...'
       print *, 'npair, npair0 = ', npair, npair0
       ierror = 1
-  endif
-  if (nk > ndif0) then
+   endif
+   if (nk > ndif0) then
       print *, 'Input error: too many differential times! Increase ndif0 in grow_params.f90...'
       print *, 'ndif, ndif0 = ', nk, ndif0 
       ierror = 1
-  endif
-  if (ierror == 1) stop ! stop on this error
+   endif
+   if (ierror == 1) stop ! stop on this error
   
     
 
   ! Save copies of in event pair, tdif arrays for later resampling -----------------!
       
    ! save copy of input event pair arrays: iqq1, iqq2, idcusp11, idcusp22, index1, index2
-   do ip = 1, npair
+    do ip = 1, npair
         iqq100(ip) = iqq1(ip)
         iqq200(ip) = iqq2(ip)
         idcusp1100(ip) = idcusp11(ip)
         idcusp2200(ip) = idcusp22(ip)
         index100(ip) = index1(ip)
         index200(ip) = index2(ip)
-   enddo
+    enddo
    
    ! save copy of input tdif/phase arrays: ipp, slat, slon, dist, tdif, rxcor
-   do k = 1, nk
+    do k = 1, nk
       ipp00(k) = ipp(k)
       slat00(k) = slat(k)
       slon00(k) = slon(k)
@@ -417,27 +440,27 @@ program growclust
           ierror = 1
       endif
         
-   enddo
-   if (ierror == 1) stop ! stop on this error 
+    enddo
+    if (ierror == 1) stop ! stop on this error 
    
    !-----------------------------------------------------------!
    
    ! make travel time tables
-   print *, 'Making travel-time tables...'
+    print *, 'Making travel-time tables...'
    
-   print *, 'Interpolating velocity model: ', trim(infile_vzmdl), '->', trim(vzfinefile)
-   vzmin = tt_dep0
-   vzmax = tt_dep1
-   call vzfillin(infile_vzmdl, vzfinefile, vpvs_factor, vz_dz, vzmin, vzmax)
-   print *, ' '
+    print *, 'Interpolating velocity model: ', trim(infile_vzmdl), '->', trim(vzfinefile)
+    vzmin = tt_dep0
+    vzmax = tt_dep1
+    call vzfillin(infile_vzmdl, vzfinefile, vpvs_factor, vz_dz, vzmin, vzmax)
+    print *, ' '
    
-   print *, 'Creating P-phase table: ', trim(TTtabfile(1))
-   call deptable(vzfinefile, 1, plongcutP, tt_dep0,tt_dep1, tt_ddep, &
+    print *, 'Creating P-phase table: ', trim(TTtabfile(1))
+    call deptable(vzfinefile, 1, plongcutP, tt_dep0,tt_dep1, tt_ddep, &
      tt_del0, tt_del1, tt_ddel, vzmodel_type, TTtabfile(1)(1:100))
-   print *, ' '
+    print *, ' '
      
-   print *, 'Creating S-phase table: ', trim(TTtabfile(2))
-   call deptable(vzfinefile, 2, plongcutS, tt_dep0,tt_dep1, tt_ddep, &
+    print *, 'Creating S-phase table: ', trim(TTtabfile(2))
+    call deptable(vzfinefile, 2, plongcutS, tt_dep0,tt_dep1, tt_ddep, &
      tt_del0, tt_del1, tt_ddel, vzmodel_type, TTtabfile(2)(1:100))
      
     ! Added 2/2017 to check event depths vs velocity model, travel time tables
@@ -556,6 +579,7 @@ program growclust
    '   dLATC     dLONC     dDEPC     dDISTC   RMSC  RMEDC'
    
 ! --------- let's relocate best pair for test --------------------!
+   call TIMER
    i = iqq1(ip)
    j = iqq2(ip)
    idcusp_i = idcusp11(ip)
@@ -574,17 +598,17 @@ program growclust
    qlat1 = qlat(i)
    qlon1 = qlon(i)
    qdep1 = qdep(i)
-   print *, 'evlist loc = ', qlat_cat(i), qlon_cat(i), qdep_cat(i)
+   print *, 'evlist loc = ', qlat_cat(i), qlon_cat(i), qdep_cat(i)-datum
    qlat2 = qlat(j)
    qlon2 = qlon(j)
    qdep2 = qdep(j)
-   print *, 'evlist loc = ', qlat_cat(j), qlon_cat(j), qdep_cat(j)
+   print *, 'evlist loc = ', qlat_cat(j), qlon_cat(j), qdep_cat(j)-datum
    
    ! compute centroid (mean) location   
    qlat0 = (qlat1 + qlat2)/2.
    qlon0 = (qlon1 + qlon2)/2.
    qdep0 = (qdep1 + qdep2)/2.
-   print *, 'mean loc = ', qlat0, qlon0, qdep0
+   print *, 'mean loc = ', qlat0, qlon0, qdep0-datum
    
    npick = index2(ip) - index1(ip) + 1
    if (npick > n0) then
@@ -597,8 +621,8 @@ program growclust
    call DIFLOC(qlat0, qlon0, qdep0, npick, tdif(k), ipp(k), slat(k), slon(k), TTtabfile, boxwid, nit, &
          irelonorm, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif, resid, rms, rmed, resol)
    print *, 'DIFLOC results: '
-   print *, 'quake 1 loc = ', qlat1, qlon1, qdep1
-   print *, 'quake 2 loc = ', qlat2, qlon2, qdep2   
+   print *, 'quake 1 loc = ', qlat1, qlon1, qdep1-datum
+   print *, 'quake 2 loc = ', qlat2, qlon2, qdep2-datum   
    print *, 'torgdif, rms, rmed, resol = ', torgdif, rms, rmed, resol
    print *, '--------------------------------------------------'
    print *, ' '
@@ -789,6 +813,7 @@ program growclust
             kraw, i, j, rfactor(ip)
          print *, 'ntree, nbranch_i, nbranch_j = ', &
                    ntree, nbranch(index(i)), nbranch(index(j))
+         !call TIMER
       endif
       if (i == 0 .or. j == 0) cycle
       if (i == j) cycle
@@ -956,8 +981,8 @@ program growclust
 
         ! added for robustness: careful with cluster mergers near surface)
           !if (qdep1 < tt_dep0 .or. qdep2 < tt_dep0) then 
-          if (qdep1 < min(0.0,min_qdep) .or. qdep2 < min(0.,min_qdep)) then ! modified 07/2018
-             print *, '***rejecting cluster merger (too shallow) ', cdist, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif
+          if (qdep1 < min(0.0,min_qdep) .or. qdep2 < min(0.0,min_qdep)) then ! modified 07/2018
+             !print *, '***rejecting cluster merger (too shallow) ', cdist, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif
              cycle
           endif
 
@@ -968,11 +993,11 @@ program growclust
              print *, 'CHECK CURRENT PAIR (ipair,qnum1,qnum2,evid1,evid2):', ip, i, j, idcusp11(ip), idcusp22(ip)
              print *, 'DIAGNOSTICS:'
              print '(f10.5,f11.5,f8.3,f10.5,f11.5,f8.3,f10.5,f11.5,f8.3,f8.3, f8.4,f8.4,f10.7)', &
-              qlat0, qlon0, qdep0, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif, rms, rmed, resol
+              qlat0, qlon0, qdep0-datum, qlat1, qlon1, qdep1-datum, qlat2, qlon2, qdep2-datum, torgdif, rms, rmed, resol
              do i = 1, npk8
                 print '(i4,f9.4,f10.5,f11.5,f10.5,f11.5,f8.3,f8.3,f10.5,f11.5,f8.3,f8.3)', &
-                    i, tdif8(i), slat8(i), slon8(i), qlat18(i), qlon18(i), qdep18(i), qtim18(i), &
-                    qlat28(i), qlon28(i), qdep28(i), qtim28(i) 
+                    i, tdif8(i), slat8(i), slon8(i), qlat18(i), qlon18(i), qdep18(i)-datum, qtim18(i), &
+                    qlat28(i), qlon28(i), qdep28(i)-datum, qtim28(i) 
              enddo
              close(16)
              stop
@@ -1690,9 +1715,9 @@ endif
    endif
                 
    write (13, 860) qyr_cat(iq), qmon_cat(iq), qdy_cat(iq), qhr_cat(iq), qmn_cat(iq), &
-   qsc_cat(iq), idcusp(iq), qlatR(iq), qlonR(iq), qdepR(iq), qmag_cat(iq), &
+   qsc_cat(iq), idcusp(iq), qlatR(iq), qlonR(iq), qdepR(iq)-datum, qmag_cat(iq), & ! 07/2018 optional datum re-adjustment for output
    iq,itreeqR(iq),nbranchqR(iq),qnpair(iq),qndiffP(iq),qndiffS(iq),qrmsP(iq),qrmsS(iq), &
-   MADh_boot(iq), MADz_boot(iq), MADt_boot(iq), qlat_cat(iq), qlon_cat(iq), qdep_cat(iq)           
+   MADh_boot(iq), MADz_boot(iq), MADt_boot(iq), qlat_cat(iq), qlon_cat(iq), qdep_cat(iq)-datum ! 07/2018 optional datum re-adjustment for output           
 860   format (i4, 4i3, f7.3, i10, f10.5, f11.5, f8.3, f6.2,  &                          ! 11/2016 changed lat from f9.5 to f10.5 for negative latitudes
               3i8, 3i6, 2f6.2, &
               3f8.3, 2x, f10.5, f11.5, f8.3)   
@@ -1700,7 +1725,7 @@ endif
    
    close (13)
 
-! second output (optional): cluster location output (out.growclust_clust)
+! second output: cluster location output (out.growclust_clust)
    if (outfile_clust(1:4) .ne. "none") then    
    open (13, file = outfile_clust)
       
@@ -1714,7 +1739,7 @@ endif
                                               
        write (13, 880) ii, iq, idcusp(iq), qmag_cat(iq), qyr_cat(iq), qmon_cat(iq), &
           qdy_cat(iq), qhr_cat(iq), qmn_cat(iq), qsc_cat(iq), qlatR(iq), qlonR(iq), &
-          qdepR(iq), qcxR(iq), qcyR(iq), qczR(iq), MADh_boot(iq), MADz_boot(iq), &
+          qdepR(iq)-datum, qcxR(iq), qcyR(iq), qczR(iq), MADh_boot(iq), MADz_boot(iq), & ! 07/2018 optional datum re-adjustment for output
           MADt_boot(iq), qlat_cat(iq), qlon_cat(iq), qdep_cat(iq)                
 880      format (i8, i9, i10, f6.2, i5, 4i3, f7.3, f10.5, f11.5, f8.3, &                ! 11/2016 changed lat from f9.5 to f10.5 for negative latitudes
              3f10.4, 3f8.3, 2x, f10.5, f11.5, f8.3)      
@@ -1734,16 +1759,16 @@ endif
        
        do iq = 1, nq
    
-         write(13, 864) iq, idcusp(iq), qlatR(iq), qlonR(iq), qdepR(iq), &
+         write(13, 864) iq, idcusp(iq), qlatR(iq), qlonR(iq), qdepR(iq)-datum, &        ! 07/2018 optional datum re-adjustment for output
          itreeqR(iq), nbranchqR(iq), BnbMEAN(iq), BnbMIN(iq), BnbMAX(iq), &
-         BlatMEAN(iq), BlonMEAN(iq), BdepMEAN(iq), &
+         BlatMEAN(iq), BlonMEAN(iq), BdepMEAN(iq)-datum, &                              ! 07/2018 optional datum re-adjustment for output
          MADh_boot(iq), MADz_boot(iq), MADt_boot(iq), &
          SEh_boot(iq), SEz_boot(iq), SEt_boot(iq) 
 864   format (i8, i10, f10.5, f11.5, f8.3, 2i8, f7.2, 2i8, f10.5, f11.5, f8.3, 6f8.3)   ! 11/2016 changed lat from f9.5 to f10.5 for negative latitudes
                     
         do ib = 1, nboot            
           write(13,'(f10.5, x, f11.5, x, f8.5, x, i8, x, i8)') &                        ! 11/2016 changed lat from f9.5 to f10.5 for negative latitudes
-          Blat(ib,iq), Blon(ib,iq), Bdep(ib,iq), Bitreeq(ib,iq), Bnb(ib,iq)
+          Blat(ib,iq), Blon(ib,iq), Bdep(ib,iq)-datum, Bitreeq(ib,iq), Bnb(ib,iq)       ! 07/2018 optional datum re-adjustment for output
         enddo                          
    
        enddo
@@ -2435,5 +2460,7 @@ subroutine GET_TTS_FAST8(phase,ip,del,qdep8,tt,iflag)
       stop
 999   return
       end
+   
+   
    
    

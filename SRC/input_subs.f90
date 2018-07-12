@@ -368,19 +368,20 @@
 ! ****      - This is a new subroutine added 07/2018
 !
 !  Inputs:  stfile    =  site list file name
-!           istform   =  site list format (0 or 1) 
+!           istform   =  site list format (0,1,2) 
 !           nsta0     =  maximum number of stations
 !           
-!  Returns: stnames   =  array(len=nsta) of 5 char station names, sorted
+!  Returns: stnames   =  array(len=nsta) of station names, sorted
 !           stlats  =  array(len=nsta) of station latitudes, sorted
 !           stlons  =  array(len=nsta) of station longitudes, sorted
+!           stelevs = array(len=nsta) of station elevations (m), sorted
 !           nsta      = total number of stations
 !           stkey     = array(len=256) that tracks index w/in stnames that a letter first appears
 !                         This is useful to quickly look up a station name
 ! 
 !-----------------------------------------------------------------------------------------
    subroutine READ_STLIST(stfile, istform, nsta0, &
-           stnames, stlats, stlons, nsta, stkey)
+           stnames, stlats, stlons, stelevs, nsta, stkey)
     
     ! define variables
     implicit none
@@ -388,6 +389,7 @@
     integer :: nsta0, istform, i, j, k, nsta
     real :: rr
     real(dp), dimension(nsta0) :: stlats00, stlons00, stlats, stlons
+    real, dimension(nsta0) :: stelevs00, stelevs
     character (len=100) :: stfile, linebuf
     character (len=5), dimension(nsta0) :: stnames00, stnames
     real, dimension(nsta0) :: stnums00, stnums
@@ -407,9 +409,11 @@
          stnames00(i)='     '
          read (19,13,end=12) stnames00(i)(1:5), stlats00(i), stlons00(i)
 13             format (3x,a5,10x,f10.5,f12.5)
+         
+         stelevs00(i) = 0.0 ! no station elevation listed
     
         ! stations.dat format
-        else if (istform==1) then 
+        else if (istform<=2) then 
         
            stnames00(i)='     '
            read(19, '(a100)', end=12) linebuf
@@ -431,17 +435,22 @@
             enddo
             k = j
             
-            ! now copy over STNAME (output starting a char 4, until input blank or at 5 char)
+            ! now copy over STNAME
             do j = 1,5
               if (linebuf(j:j) == ' ') exit
               stnames00(i)(j:j) = linebuf(k+j-1:k+j-1)
             enddo
            
-           endif
+           endif !--------------------
            
-           ! now read latitude and longitude
-           read(linebuf(k+j:100), *) stlats00(i), stlons00(i) 
-
+           ! now read latitude and longitude (and optionally, elevation)
+           if (istform == 2) then
+              read(linebuf(k+j:100), *) stlats00(i), stlons00(i), stelevs00(i) 
+           else
+              stelevs00(i) = 0.0 ! no station elevation listed
+              read(linebuf(k+j:100), *) stlats00(i), stlons00(i)
+           endif
+ 
         ! unlisted station type
         else
             print *, 'Error! Undefined station list type!'
@@ -476,6 +485,7 @@
             stnames(k)(1:5) = stnames00(isort(k))(1:5)
             stlats(k) = stlats00(isort(k))
             stlons(k) = stlons00(isort(k))
+            stelevs(k) = stelevs00(isort(k))
             stnums(k) = stnums00(isort(k))
          enddo 
     
@@ -484,7 +494,7 @@
          print *,'Station locations read.  Nsta = ', nsta 
          do k = 1, nsta
             !write(*, '(a5, 1x, f10.4, f10.4, f16.6)') stnames(k), stlats(k), stlons(k), stnums(k)
-            write(*, '(i3, 1x, a5, 1x, f10.4, f10.4)') k, stnames(k), stlats(k), stlons(k)
+            write(*, '(i3, 1x, a5, 1x, f10.4, f10.4, f10.4)') k, stnames(k), stlats(k), stlons(k), stelevs(k)
          enddo
          print *, '=================================================='
          
@@ -890,7 +900,7 @@ end subroutine LOOKUP_STA
        
     ! get station locations: Fast lookup with alphabetized stlist, added 07/2018
       do k = 1, nk
-        call LOOKUP_STA(stname_pr(kk), nsta, slnames, slkeys, sllats, sllons, slat(kk), slon(kk))
+        call LOOKUP_STA(stname(k), nsta, slnames, slkeys, sllats, sllons, slat(k), slon(k))
         if (slat(k) < -99.) then
          print *,'ERROR: station not found, stname = ', stname(k)
          print *, 'Ending program: xcor data and station list inconsistent'
@@ -1159,6 +1169,15 @@ end subroutine LOOKUP_STA
      print *, 'npair_cut, nk_cut = ', npair_cut, nk_cut
    
    endif ! ------------ close of loop on the xcor file type
+
+   ! final check to make sure input is aligned
+   do ip = 2, npair
+      if (index1(ip) .ne. index2(ip-1)+1) then
+         print *, 'ERROR: INDEX ALIGNMENT (possible memory problem?)'
+         print *, 'Ending program.'
+         stop
+      endif
+   enddo
    
    print *, 'First two pairs follow:'
    do ip = 1,2
