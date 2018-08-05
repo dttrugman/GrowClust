@@ -1021,12 +1021,12 @@ program growclust
          nbranch_i = nbranch(index(i))
          nbranch_j = nbranch(index(j))
          
-         !original centroid (stored in tlat/tlon/tdep arrays)
+         !original centroid of combined cluster (stored in tlat/tlon/tdep arrays)
          clat1 = (tlat(index(i))*nbranch_i + tlat(index(j))*nbranch_j)/real(nbranch_i + nbranch_j)  
          clon1 = (tlon(index(i))*nbranch_i + tlon(index(j))*nbranch_j)/real(nbranch_i + nbranch_j)
          cdep1 = (tdep(index(i))*nbranch_i + tdep(index(j))*nbranch_j)/real(nbranch_i + nbranch_j)
          
-         !new centroid (outputs qlat1/2,qlon1/2,qdep1/2 from DIFCLUST)
+         !new centroid of combined cluster (outputs qlat1/2,qlon1/2,qdep1/2 from DIFCLUST)
          clat2 = (qlat1*nbranch_i + qlat2*nbranch_j)/real(nbranch_i + nbranch_j)                    
          clon2 = (qlon1*nbranch_i + qlon2*nbranch_j)/real(nbranch_i + nbranch_j)
          cdep2 = (qdep1*nbranch_i + qdep2*nbranch_j)/real(nbranch_i + nbranch_j)

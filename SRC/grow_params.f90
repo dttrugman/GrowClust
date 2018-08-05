@@ -41,14 +41,14 @@
    real, parameter    :: conparam = 0.01        ! minimum connection fraction to join clusters
    real, parameter    :: distmax = 5.0          ! maximum catalog(input) distance to join clusters (km)
    real, parameter    :: distmax2 = 3.0         ! maximum relocated distance to join clusters (km)
-   integer, parameter :: nclustshiftmin = 10    ! minimum number of events in cluster to apply cluster shift test
+   integer, parameter :: nclustshiftmin = 1    ! minimum number of events in cluster to apply cluster shift test
    real, parameter    :: hshiftmax = 2.0        ! maximum permitted horizontal cluster shifts (km)
    real, parameter    :: vshiftmax = 2.0        ! maximum permitted vertical cluster shifts (km)
    real, parameter    :: rmedmax = 0.05         ! maximum median absolute tdif residual to join clusters
    
    ! ------- Relative Relocation subroutine parameters -------------
    real, parameter    :: boxwid = 3. ! initial "shrinking-box" width (km)
-   integer, parameter :: nit = 20 ! number of iterations
+   integer, parameter :: nit = 15 ! number of iterations
    integer, parameter :: irelonorm = 1 ! relocation norm (L1 norm=1, L2 norm=2, 3=robust L2)
    real, parameter    :: tdifmax = 30. ! maximum differential time value allowed (for error-checking on xcor data input)
    
