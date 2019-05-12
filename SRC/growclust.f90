@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2018 Daniel Trugman
+! Copyright 2019 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -21,7 +21,6 @@
 ! a hybrid, hierarchical clustering algorithm to perform relative relocation of  
 ! earthquake hypocenters based on waveform cross-correlation data. ***********************
 !-----------------------------------------------------------------------------------------
-! Daniel Trugman, February 2017
 !-----------------------------------------------------------------------------------------
 ! object file and module dependencies:
 !       input_subs.o (subroutines for handling input file I/0)
@@ -246,7 +245,7 @@ program growclust
      print *, 'Assumed Vp/Vs if Vs not specified in input file: '
      write(*, '(f8.4)') vpvs_factor 
      print *,'Min ray params (p-P, p-S) at long range (.133 = no Pn, .238 = no Sn):'
-     write(*, '(f8.4,1x,f8.4)'), plongcutP, plongcutS
+     write(*, '(f8.4,1x,f8.4)') plongcutP, plongcutS
      
      !------- travel-time table size parameters
         ! tt_dep0, tt_dep1, tt_ddep: min dep, max dep, dep spacing
@@ -276,17 +275,17 @@ program growclust
      call GET_INP(11, linebuf)
      read(linebuf,*) rmin, delmax, rmsmax
       print *, 'rmin, delmax, rmsmax'
-     write (*, '(f6.3, f9.3, f6.3)'), rmin, delmax, rmsmax
+     write (*, '(f6.3, f9.3, f6.3)') rmin, delmax, rmsmax
      !------
      call GET_INP(11, linebuf)
      read(linebuf,*) rpsavgmin, rmincut, ngoodmin, iponly
      print *, 'rpsavgmin, rmincut, ngoodmin, iponly'
-     write (*, '(f10.3, f10.3, i8, i8)'), rpsavgmin, rmincut, ngoodmin, iponly
+     write (*, '(f10.3, f10.3, i8, i8)') rpsavgmin, rmincut, ngoodmin, iponly
      !-----
      call GET_INP(11, linebuf)
      read(linebuf,*) nboot, nbranch_min
      print *, 'nboot, nbranch_min'
-     write (*, '(i7, i7)'), nboot, nbranch_min
+     write (*, '(i7, i7)') nboot, nbranch_min
      !-----
       
      ! ------- output file names

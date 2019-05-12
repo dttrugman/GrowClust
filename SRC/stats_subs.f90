@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2018 Daniel Trugman
+! Copyright 2019 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -599,3 +599,89 @@ end subroutine DPMEAN_STDDEV
 
 !-----------------------------------------------------------
 
+!------------------------------------------------------------------
+! **** LEXSORT: subroutine to get sort inds for a character array
+!  --- Daniel Trugman, May 2019
+!
+! Inputs:
+!       • inarray: input character array (len=nchar, dimension=ns)
+!       • ns, nchar: dimension and number of characters in array
+!
+! Returns:
+!       • isort: indices to sort array
+!------------------------------------------------------------------
+
+subroutine LEXSORT(inarray,ns,nchar,isort)
+
+
+    implicit none
+    integer :: ns, nchar, ii, jj, kk, npart, ix, ix1, ix2, nx
+    integer, dimension(ns) :: isort, charnum, ix1p, ix2p, itemp, jsort
+    character (len=nchar), dimension(ns) :: inarray, sortarray, temparray
+
+    ! covert 1st character to integer
+    jj = 1
+    do ii = 1, ns
+        charnum(ii) = ichar(inarray(ii)(jj:jj))
+    enddo
+
+    ! sort input array by first character
+    call indexi(ns,charnum,isort)
+    do ii = 1, ns
+        sortarray(ii)(1:nchar)=inarray(isort(ii))(1:nchar)
+    enddo
+
+
+    ! now loop over remaining characters
+    do jj = 2, nchar
+
+        ! partition sorted array into groups that are identical up to character jj
+        npart = 1
+        ix1p(npart) = 1 ! open first partition
+        do ix = 2, ns
+
+            ! part of current partition: skip
+            if (sortarray(ix-1)(1:jj-1) == sortarray(ix)(1:jj-1)) cycle
+
+            ix2p(npart) = ix-1 ! close previous partition
+            npart = npart+1 ! increment partitions
+            ix1p(npart)=ix ! update new partition
+
+        enddo
+        ix2p(npart)=ns ! close last partition
+
+
+        ! covert jth character to integer
+        do ii = 1, ns
+            charnum(ii) = ichar(sortarray(ii)(jj:jj))
+        enddo
+
+        ! sort by character jj, within each partitioned group
+        do kk = 1, npart
+
+            ! get partition indices
+            ix1 = ix1p(kk)
+            ix2 = ix2p(kk)
+            if (ix1==ix2) cycle
+
+            ! store temporary arrays
+            nx = 1+ix2-ix1
+            do ix = 1, nx
+                temparray(ix)(1:nchar)=sortarray(ix1+ix-1)(1:nchar)
+                itemp(ix)=isort(ix1+ix-1)
+            enddo
+
+            ! sort this partition
+            call indexi(nx,charnum(ix1:ix2),jsort)
+
+            ! update sorted arrays and sort indices
+            do ix = 1,nx
+                sortarray(ix1+ix-1)(1:nchar) = temparray(jsort(ix))(1:nchar)
+                isort(ix1+ix-1) = itemp(jsort(ix))
+            enddo
+        enddo ! --- end loop over partitions
+
+    enddo ! --- end loop over characters, jj
+
+    return
+end subroutine LEXSORT

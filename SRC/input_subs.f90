@@ -392,7 +392,6 @@
     real, dimension(nsta0) :: stelevs00, stelevs
     character (len=100) :: stfile, linebuf
     character (len=5), dimension(nsta0) :: stnames00, stnames
-    real, dimension(nsta0) :: stnums00, stnums
     integer, dimension(nsta0) :: isort
     integer, dimension(256) :: stkey
     
@@ -402,12 +401,15 @@
     
     ! loop over station lines
     do i=1,nsta0
+
+       ! get next line
+       read(19, '(a100)', end=12) linebuf
+       stnames00(i)='     '
        
        ! stlist format
        if (istform==0) then 
-    
-         stnames00(i)='     '
-         read (19,13,end=12) stnames00(i)(1:5), stlats00(i), stlons00(i)
+
+         read (linebuf,13,end=12) stnames00(i)(1:5), stlats00(i), stlons00(i)
 13             format (3x,a5,10x,f10.5,f12.5)
          
          stelevs00(i) = 0.0 ! no station elevation listed
@@ -415,8 +417,7 @@
         ! stations.dat format
         else if (istform<=2) then 
         
-           stnames00(i)='     '
-           read(19, '(a100)', end=12) linebuf
+
            
            ! check to see if in NW_STNAME format
            if (linebuf(3:3)== ' ' .and. linebuf(1:1) .ne. ' ') then
@@ -469,32 +470,33 @@
 12       nsta=i-1
          close (19)
          
-         ! Now compute lexigraphic station numbers (using ichar) --> helps with sort below
-         do k = 1, nsta
-            stnums00(k) = 0
-            rr = 10000.0
-            do j = 1, 5
-                stnums00(k) = stnums00(k) + ichar(stnames00(k)(j:j))*rr
-                rr = rr/100.
-            enddo
-         enddo
-         
-         ! sort station names alphabetically (using station number)
-         call INDEXX(nsta, stnums00, isort)
-         do k = 1, nsta
-            stnames(k)(1:5) = stnames00(isort(k))(1:5)
-            stlats(k) = stlats00(isort(k))
-            stlons(k) = stlons00(isort(k))
-            stelevs(k) = stelevs00(isort(k))
-            stnums(k) = stnums00(isort(k))
-         enddo 
+        ! sort station names alphabetically
+        call LEXSORT(stnames00,nsta,5,isort)
+
+
+        ! copy over sorted stations, removing duplicates
+        k = 0
+        do i = 1, nsta
+            if (k==0) then
+                 k=k+1
+            else if (stnames(k)(1:5)==stnames00(isort(i))(1:5)) then
+                continue
+            else
+                 k=k+1
+            endif
+            stnames(k)(1:5) = stnames00(isort(i))(1:5)
+            stlats(k) = stlats00(isort(i))
+            stlons(k) = stlons00(isort(i))
+            stelevs(k) = stelevs00(isort(i))
+        enddo
+        nsta = k
     
          
          ! print sorted stations
          print *,'Station locations read.  Nsta = ', nsta 
          do k = 1, nsta
             !write(*, '(a5, 1x, f10.4, f10.4, f16.6)') stnames(k), stlats(k), stlons(k), stnums(k)
-            write(*, '(i3, 1x, a5, 1x, f10.4, f10.4, f10.4)') k, stnames(k), stlats(k), stlons(k), stelevs(k)
+            write(*, '(i5, 1x, a5, 1x, f10.4, f10.4, f10.4)') k, stnames(k), stlats(k), stlons(k), stelevs(k)
          enddo
          print *, '=================================================='
          
@@ -992,7 +994,7 @@ end subroutine LOOKUP_STA
         endif  ! endif on goodpair----------
         
         ! ok, move on to the new pair ---------------
-        read(linebuf(2:100), *), qcusp1, qcusp2, otc12 ! (note that we don't need the origin
+        read(linebuf(2:100), *) qcusp1, qcusp2, otc12 ! (note that we don't need the origin
                                                        ! time correction b/c we don't mix xcor 
                                                        ! and catalog differential times)
         
@@ -1044,7 +1046,7 @@ end subroutine LOOKUP_STA
         
         ! get station name, tdif, rxcor, and phase character (P or S)
             ! note, tdif likely has opposite sign convention (t1-t2) if formatted for hypoDD
-        read(linebuf(ss:100),*), tdif_pr(kk), rxcor_pr(kk), ippchar
+        read(linebuf(ss:100),*) tdif_pr(kk), rxcor_pr(kk), ippchar
         if (it12form == 12) tdif_pr(kk) = -tdif_pr(kk) ! correct to 21 sign convention
         
         ! convert P/S to 1/2
