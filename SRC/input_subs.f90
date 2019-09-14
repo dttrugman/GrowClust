@@ -1169,6 +1169,18 @@ end subroutine LOOKUP_STA
      print *, 'Finished processing xcor text file: ', xcorfile
      print *, 'npair, nk = ', npair, nk
      print *, 'npair_cut, nk_cut = ', npair_cut, nk_cut
+
+    ! check for npair and nk size
+    if (npair > npair0) then
+       print *, 'Input error: too many event pairs! Increase npair0 in grow_params.f90...'
+       print *, 'npair, npair0 = ', npair, npair0
+       stop
+    endif
+    if (nk > ndif0) then
+       print *, 'Input error: too many differential times! Increase ndif0 in grow_params.f90...'
+       print *, 'ndif, ndif0 = ', nk, ndif0
+       stop
+    endif
    
    endif ! ------------ close of loop on the xcor file type
 

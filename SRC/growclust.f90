@@ -563,11 +563,11 @@ program growclust
    write(16, '(a56, f6.2)') ' (max rms residual to join clusters): rmsmax =', rmsmax
    write (16, '(a56, i6)' ) ' (num. bootstrap uncertainty iterations): nboot =', nboot
    write(16, *) '**************** Auxiliary Run Parameters *******************'
-   write(16, '(a56, f6.4)') ' min connnection fraction to join clusters: ', conparam 
+   write(16, '(a56, f6.4)') ' min connection fraction to join clusters: ', conparam 
    write(16, '(a56, f6.2)') ' max catalog dist to join clusters: ', distmax
    write(16, '(a56, f6.2)') ' max relocated dist to join clusters: ', distmax2
    write(16, '(a56, i6)') ' min number in cluster to apply shift test: ', nclustshiftmin
-   write(16, '(a56, f6.2)') ' max permitted horzizontal cluster shifts: ', hshiftmax
+   write(16, '(a56, f6.2)') ' max permitted horizontal cluster shifts: ', hshiftmax
    write(16, '(a56, f6.2)') ' max permitted vertical cluster shifts: ', vshiftmax
    write(16, '(a56, f6.2)') ' max median absolute residual to join clusters: ', rmedmax  
    write(16, *) '*************************************************************'
