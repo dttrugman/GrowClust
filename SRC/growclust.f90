@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2019 Daniel Trugman
+! Copyright 2020 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -2122,7 +2122,7 @@ subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
    
    real :: degrad, degkm,  ddep0,  cosqlat,  ddep, fitbest, &
            fdep1, fdep2, dx, dy, delkm, tsec1, tsec2, &
-           tdif, residmed, fit, fit2, fdepbest1,  &
+           tdif, residmed, fit, fdepbest1,  &
            fdepbest2, tbest, qorg, torgdif,  cdep1, cdep2, &
            rms, rmed,  qdep0, boxwid, resol, cdist, zboxwid
            

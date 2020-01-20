@@ -387,7 +387,6 @@
     implicit none
     integer, parameter     :: dp=kind(0.d0)   
     integer :: nsta0, istform, i, j, k, nsta
-    real :: rr
     real(dp), dimension(nsta0) :: stlats00, stlons00, stlats, stlons
     real, dimension(nsta0) :: stelevs00, stelevs
     character (len=100) :: stfile, linebuf
@@ -415,10 +414,8 @@
          stelevs00(i) = 0.0 ! no station elevation listed
     
         ! stations.dat format
-        else if (istform<=2) then 
-        
+        else if (istform<=2) then
 
-           
            ! check to see if in NW_STNAME format
            if (linebuf(3:3)== ' ' .and. linebuf(1:1) .ne. ' ') then
              
