@@ -147,7 +147,7 @@
 ! nray0 = maximum number of rays during ray tracing
 ! ncount0 = 2*nray0
       integer npts0,nz0,nx0,nray0,ncount0
-      parameter (npts0=1000,nz0=100,nx0=500,nray0=40002,ncount0=80002)
+      parameter (npts0=1000,nz0=201,nx0=501,nray0=40002,ncount0=80002)
 
       real erad,pi
       parameter (erad=6371., pi=3.1415927)
@@ -246,13 +246,11 @@
 ! ------------------- More input -------------
       
 !  get range of source depths
-         dep2=dep2+dep3/20.
-         idep=0
-         ndep = floor((dep2-dep1)/dep3)+1
-         do idep = 1,ndep
-            dep = dep1 + (idep-1)*dep3
-            deptab(idep)=dep
-         enddo   
+      ndep = floor((dep2+dep3/10.-dep1)/dep3)+1 ! (note, this value has been checked on input)
+      do idep = 1,ndep
+        dep = dep1 + (idep-1)*dep3
+        deptab(idep)=dep
+      enddo
 
 ! get number of rays to compute     
       pmin=0.
@@ -414,7 +412,7 @@
          
          
          ! interpolate offsets to the desired spacing and find the first-arriving ray
-         ndel = floor((del2-del1)/del3) + 1 ! number of interpolation pts
+         ndel = floor((del2+del3/10.-del1)/del3) + 1 ! (note, this value has been checked on input)
          
          do idel = 1, ndel !---------- loop over offsets
             

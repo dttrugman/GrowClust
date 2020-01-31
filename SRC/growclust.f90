@@ -2326,7 +2326,7 @@ end subroutine DIFCLUST
 subroutine GET_TTS_FAST8(phase,ip,del,qdep8,tt,iflag)
    implicit none
    
-   integer, parameter :: nd0=280, nx0=401
+   integer, parameter :: nd0=201, nx0=501
      
    integer :: id, id1, id2, iflag, ip, ix, ix1, ix2, ixbest1, ixbest2
       

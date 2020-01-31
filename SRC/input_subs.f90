@@ -82,7 +82,7 @@
       tt_del1, tt_del2, tt_del3, rmsmax, delmax, iponly, nboot, maxboot)
     
    implicit none
-   integer :: iponly, nboot, input_ok, maxboot
+   integer :: iponly, nboot, input_ok, maxboot, ndel, ndep
    real :: plongcutP, plongcutS, vpvs_factor, tt_dep1, tt_dep2, tt_dep3
    real :: tt_del1, tt_del2, tt_del3, delmax, rmsmax
    
@@ -114,7 +114,25 @@
      print *, tt_del1, tt_del2, tt_del3
      input_ok = 0
    endif
-   
+
+   ! travel time table size (hardwired to 501 x 201)
+   ndel = floor((tt_del2+tt_del3/10.-tt_del1)/tt_del3) + 1
+   ndep = floor((tt_dep2+tt_dep3/10.-tt_dep1)/tt_dep3) + 1
+   if (ndel > 501) then
+     print *, 'Input error (travel-time table param.) : min_del, max_del, d_del'
+     print *, tt_del1, tt_del2, tt_del3
+     print *, 'This leads to > 501 X points in travel time table.'
+     print *, 'Change the spacing or allocate more memory in DEPTABLE and GET_TTS_FAST8'
+     input_ok = 0
+   endif
+   if (ndep > 201) then
+     print *, 'Input error (travel-time table param.) : min_dep, max_dep, d_dep'
+     print *, tt_dep1, tt_dep2, tt_dep3
+     print *, 'This leads to > 201 Z points in travel time table.'
+     print *, 'Change the spacing or allocate more memory in DEPTABLE and GET_TTS_FAST8'
+     input_ok = 0
+   endif
+
    ! check rmsmax and delmax
    if ((rmsmax <= 0.0) .or. (delmax <= 0.0) ) then
      print *, 'Input error (GrowClust param.) : rmsmax, delmax'
