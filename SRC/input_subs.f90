@@ -77,12 +77,14 @@
 !           iponly    =  option to use P and S (0 or 2), or P-phase only (1)
 !           nboot     =  array(len=nq) of event latitude (from input catalog)
 !           maxboot   =  array(len=nq) of event longitude (from input catalog)
+!           nx0       =  maximum distance points in travel time table
+!           nd0       =  maximum depth points in travel time table
 !-----------------------------------------------------------------------------------------
    subroutine INPUT_CHECK(plongcutP, plongcutS, vpvs_factor, tt_dep1, tt_dep2, tt_dep3, &
-      tt_del1, tt_del2, tt_del3, rmsmax, delmax, iponly, nboot, maxboot)
+      tt_del1, tt_del2, tt_del3, rmsmax, delmax, iponly, nboot, maxboot, nx0, nd0)
     
    implicit none
-   integer :: iponly, nboot, input_ok, maxboot, ndel, ndep
+   integer :: iponly, nboot, input_ok, maxboot, ndel, ndep, nx0, nd0
    real :: plongcutP, plongcutS, vpvs_factor, tt_dep1, tt_dep2, tt_dep3
    real :: tt_del1, tt_del2, tt_del3, delmax, rmsmax
    
@@ -118,18 +120,18 @@
    ! travel time table size (hardwired to 501 x 201)
    ndel = floor((tt_del2+tt_del3/10.-tt_del1)/tt_del3) + 1
    ndep = floor((tt_dep2+tt_dep3/10.-tt_dep1)/tt_dep3) + 1
-   if (ndel > 501) then
+   if (ndel > nx0) then
      print *, 'Input error (travel-time table param.) : min_del, max_del, d_del'
      print *, tt_del1, tt_del2, tt_del3
-     print *, 'This leads to > 501 X points in travel time table.'
-     print *, 'Change the spacing or allocate more memory in DEPTABLE and GET_TTS_FAST8'
+     print *, 'This leads to >', nx0, 'X points in travel time table.'
+     print *, 'Change the spacing (or allocate more memory in all subroutines).'
      input_ok = 0
    endif
-   if (ndep > 201) then
+   if (ndep > nd0) then
      print *, 'Input error (travel-time table param.) : min_dep, max_dep, d_dep'
      print *, tt_dep1, tt_dep2, tt_dep3
-     print *, 'This leads to > 201 Z points in travel time table.'
-     print *, 'Change the spacing or allocate more memory in DEPTABLE and GET_TTS_FAST8'
+     print *, 'This leads to >', nd0, 'Z points in travel time table.'
+     print *, 'Change the spacing (or allocate more memory in all subroutines).'
      input_ok = 0
    endif
 

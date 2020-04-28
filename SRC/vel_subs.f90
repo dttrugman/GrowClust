@@ -133,26 +133,33 @@
 !               de12     = max del for table
 !               de13     = del spacing for table
 !               ideprad  = velocity model fmt, first column of input:  1=depth, 2=radius (added 04/2018)
+!               nx0      = maximum number of del points
+!               nz0      = maximum number of depth points
 !               ttfile   = name of output travel time table file
 !
+!   Returns:    ttab     = output travel time table
+!               xtab     = output depth table
+!               ztab     = output del table  
+!               nx       = number of del points
+!               nz       = number of depth points
+!
 !-----------------------------------------------------------------------
-      subroutine deptable(vmodel,iw,plongcut,dep1,dep2,dep3,del1,del2,del3,ideprad,ttfile)
-      
+      subroutine deptable(vmodel,iw,plongcut,dep1,dep2,dep3,del1,del2,del3,ideprad,&
+                           nx0, nz0, ttfile, ttab, xtab, ztab, nx, nz)
       implicit none
 
 ! parameters
 ! npts0 = maximum number of lines in input velocity model
-! nz0 = maximum number of depths in desired output tables
-! nx0 = maximum number of distances is desired output tables
 ! nray0 = maximum number of rays during ray tracing
 ! ncount0 = 2*nray0
-      integer npts0,nz0,nx0,nray0,ncount0
-      parameter (npts0=1000,nz0=201,nx0=501,nray0=40002,ncount0=80002)
-
+! erad = earth radius in km
+      integer npts0,nray0,ncount0
+      parameter (npts0=1000,nray0=40002,ncount0=80002)
       real erad,pi
       parameter (erad=6371., pi=3.1415927)
 
-      integer npts,ndep,nray,ncount,ndel
+! variable declarations
+      integer npts,ndep,nray,ncount,ndel,nx,nz, nx0, nz0
       integer ideptype,idep,itype,icount,idel,iw,imth,irtr
       integer i,j,i2,ip,ideprad
 
@@ -167,6 +174,9 @@
       real z_s(npts0),alpha_s(npts0),beta_s(npts0)
       real slow(npts0,2),deltab(nray0),tttab(nray0)
       real tt(nx0,nz0)
+      real ttab(nx0,nz0,2)
+      real xtab(nx0)
+      real ztab(nz0)
       real depxcor(nray0,nz0),deptcor(nray0,nz0)
 
       character*100 vmodel
@@ -192,8 +202,8 @@
          read (7,*,end=30) z_s(i),alpha_s(i),beta_s(i)
          if (ideprad.eq.2) z_s(i)=erad-z_s(i) ! note erad is earth radius
          if (z_s(i).eq.erad) go to 30
-         call FLATTEN(z_s(i),alpha_s(i),z(i),alpha(i)) ! flat-earth transform for Vp
-         call FLATTEN(z_s(i),beta_s(i),z(i),beta(i)) ! flat-earth transform for Vs
+         call FLATTEN(z_s(i),alpha_s(i),erad,z(i),alpha(i)) ! flat-earth transform for Vp
+         call FLATTEN(z_s(i),beta_s(i),erad,z(i),beta(i)) ! flat-earth transform for Vs
       enddo   
       print *,'***',npts0,' point maximum exceeded in model'
       stop
@@ -204,8 +214,8 @@
       z_s(i)=z_s(i-1)                  
       alpha_s(i)=alpha_s(i-1)
       beta_s(i)=beta_s(i-1)
-      call FLATTEN(z_s(i),alpha_s(i),z(i),alpha(i))
-      call FLATTEN(z_s(i),beta_s(i),z(i),beta(i))
+      call FLATTEN(z_s(i),alpha_s(i),erad,z(i),alpha(i))
+      call FLATTEN(z_s(i),beta_s(i),erad,z(i),beta(i))
       npts=i
       print *,'Depth points in model= ',npts
 
@@ -343,7 +353,7 @@
          tttab(ip)=2*t                    !stored in seconds
 
       enddo             !---------------- end loop on ray parameter p --------------------
-!      print *,'Completed ray tracing loop'
+      print *,'Completed ray tracing loop'
 
 !----------------------------------------------
       
@@ -457,9 +467,25 @@
       enddo                                        !end loop on depth
 
 ! fix potential edge case
-if ( (delttab(1).eq.0.) .and. (deptab(1).eq.0.) ) then
-    tt(1,1)=0.                 !set tt to zero at (0,0)
-end if
+      if ( (delttab(1).eq.0.) .and. (deptab(1).eq.0.) ) then
+        tt(1,1)=0.                 !set tt to zero at (0,0)
+      end if
+
+      print *, 'Done assembling travel time table'
+
+! output travel time table arrays
+     nx = ndel
+     nz = ndep 
+     do i = 1, nx
+       xtab(i) = del1 + (i-1)*del3
+       do j = 1, nz
+         ttab(i,j,iw) = tt(i,j)
+       enddo
+     enddo
+     do j = 1, nz
+       ztab(j) = dep1 + (j-1)*dep3
+     enddo
+
 
 !-------------- Make output files -----------------
 
@@ -483,7 +509,7 @@ end if
       
 !     third line: row of source depths
       write (11,409) (deptab(j),j=1,ndep)
-409      format (8x,100f9.1)
+409      format (8x,1000f9.1)
       
 !   fill in table:
 !       first column is X/DEL of each row
@@ -496,13 +522,17 @@ end if
             write (11,413) delttab(i),(tt(i,j),j=1,ndep)
          end if
 
-410      format (101f9.4)
-413      format (f9.3,100f9.4)
+410      format (1000f9.4)
+413      format (f9.3,1000f9.4)
 
       enddo
       close (11)
 
-      end
+      end ! end of subroutine
+      
+!-------------------------------------------------------------------------
+!-------------------------------------------------------------------------
+
 
 !-----------------------------------------------------------------------
 ! INTERP finds the y3 value between y1 and y2, using the
@@ -515,8 +545,7 @@ end if
 
 !-----------------------------------------------------------------------
 ! FLATTEN calculates flat earth tranformation.
-      subroutine FLATTEN(z_s,vel_s,z_f,vel_f)
-      erad=6371.
+      subroutine FLATTEN(z_s,vel_s,erad,z_f,vel_f)
       r=erad-z_s
       z_f=-erad*alog(r/erad)
       vel_f=vel_s*(erad/r)
@@ -525,8 +554,7 @@ end if
 
 !-----------------------------------------------------------------------
 ! UNFLATTEN is inverse of FLATTEN.
-      subroutine UNFLATTEN(z_f,vel_f,z_s,vel_s)
-      erad=6371.
+      subroutine UNFLATTEN(z_f,vel_f,erad,z_s,vel_s)
       r=erad*exp(-z_f/erad)
       z_s=erad-r
       vel_s=vel_f*(r/erad)

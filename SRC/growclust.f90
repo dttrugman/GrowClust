@@ -46,7 +46,9 @@ program growclust
    integer, parameter     :: dp=kind(0.d0)                   ! double precision
    real(dp), parameter    :: degrad = (180.0_dp)/(3.1415927_dp)
    real(dp), parameter    :: degkm = 111.1949266_dp
-!------------------------------------------------   
+!--------------- table parameters ---------------
+   integer, parameter     :: nx0 = 501
+   integer, parameter     :: nd0 = 201   
    
 ! generic integers
    integer :: i, iponly, iqmax, ip, ii, &
@@ -156,7 +158,12 @@ program growclust
     character(len=100), dimension(2) :: TTtabfile
     real :: vpvs_factor, vz_dz, plongcutP, plongcutS, vzmin, vzmax
     real :: tt_dep0, tt_dep1, tt_ddep, tt_del0, tt_del1, tt_ddel
-    integer :: rayparam_min
+    real :: rayparam_min
+    real, dimension (nx0, nd0, 2) :: ttab
+    real, dimension (nx0) :: deltab
+    real, dimension (nd0) :: deptab
+    integer :: ndel, ndep
+    
     
 ! variables for station listings
     integer :: nsta
@@ -305,7 +312,7 @@ program growclust
     
 ! call subroutine to check inputs for errors
     call INPUT_CHECK(plongcutP, plongcutS, vpvs_factor, tt_dep0, tt_dep1, tt_ddep, &
-      tt_del0, tt_del1, tt_ddel, rmsmax, delmax, iponly, nboot, maxboot)
+      tt_del0, tt_del1, tt_ddel, rmsmax, delmax, iponly, nboot, maxboot, nx0, nd0)
 
 ! call subroutine to check grow_params module for errors
     call PARAM_CHECK(conparam, hshiftmax, vshiftmax, rmedmax, boxwid, nit, samp_type, irelonorm, vzmodel_type) 
@@ -447,20 +454,51 @@ program growclust
    ! make travel time tables
     print *, 'Making travel-time tables...'
    
+   ! interpolation of velocity model
     print *, 'Interpolating velocity model: ', trim(infile_vzmdl), '->', trim(vzfinefile)
     vzmin = tt_dep0
     vzmax = tt_dep1
     call vzfillin(infile_vzmdl, vzfinefile, vpvs_factor, vz_dz, vzmin, vzmax)
     print *, ' '
    
+   ! make p-wave table
     print *, 'Creating P-phase table: ', trim(TTtabfile(1))
     call deptable(vzfinefile, 1, plongcutP, tt_dep0,tt_dep1, tt_ddep, &
-     tt_del0, tt_del1, tt_ddel, vzmodel_type, TTtabfile(1)(1:100))
-    print *, ' '
-     
+     tt_del0, tt_del1, tt_ddel, vzmodel_type, nx0, nd0, TTtabfile(1)(1:100),&
+     ttab, deltab, deptab, ndel, ndep)
+   
+   ! print results
+    print *, 'ndel  ndep:', ndel, ndep
+    print *, 'travel times for each del:'
+    do i = 1,ndel
+       write (*, '(f9.4)', advance = "no") deltab(i)
+       do j = 1, ndep
+          write (*,'(f9.4)',advance="no") ttab(i,j,1)
+       enddo
+       print *, ''
+    enddo
+    print *, ''
+    
+   ! make s-wave table  
     print *, 'Creating S-phase table: ', trim(TTtabfile(2))
     call deptable(vzfinefile, 2, plongcutS, tt_dep0,tt_dep1, tt_ddep, &
-     tt_del0, tt_del1, tt_ddel, vzmodel_type, TTtabfile(2)(1:100))
+     tt_del0, tt_del1, tt_ddel, vzmodel_type, nx0, nd0, TTtabfile(2)(1:100),&
+     ttab, deltab, deptab, ndel, ndep)
+    print *, 'ndel  ndep:', ndel, ndep
+    print *, ' '
+        print *, 'ndel  ndep:', ndel, ndep
+    print *, 'travel times for each del:'
+    
+    ! print results
+    do i = 1,ndel
+       write (*, '(f9.4)', advance = "no") deltab(i)
+       do j = 1, ndep
+          write (*,'(f9.4)',advance="no") ttab(i,j,2)
+       enddo
+       print *, ''
+    enddo
+    print *, ' '
+
      
     ! Added 2/2017 to check event depths vs velocity model, travel time tables
     print '(a26, f8.2, f8.2)', 'min, max event depth:', min_qdep, max_qdep
@@ -617,8 +655,9 @@ program growclust
    
    ! DIFLOC performs relative event location for a pair of events
    k = index1(ip)
-   call DIFLOC(qlat0, qlon0, qdep0, npick, tdif(k), ipp(k), slat(k), slon(k), TTtabfile, boxwid, nit, &
-         irelonorm, qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif, resid, rms, rmed, resol)
+   call DIFLOC(qlat0, qlon0, qdep0, npick, tdif(k), ipp(k), slat(k), slon(k), &
+         ttab, deltab, deptab, ndel, ndep, boxwid, nit, irelonorm, &
+         qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, torgdif, resid, rms, rmed, resol)
    print *, 'DIFLOC results: '
    print *, 'quake 1 loc = ', qlat1, qlon1, qdep1-datum
    print *, 'quake 2 loc = ', qlat2, qlon2, qdep2-datum   
@@ -626,7 +665,7 @@ program growclust
    print *, '--------------------------------------------------'
    print *, ' '
    print *, ' '
-   
+   !stop
 
 ! ------------------------------------------------------------------------------------ 
 
@@ -972,7 +1011,8 @@ program growclust
         !     and residual information. (Somewhat confusingly, qlat1/2,qlon1/2,qdep1/2 are new cluster centroids,
         !     not event locations...)
          call DIFCLUST(qlat0, qlon0, qdep0, npk8, tdif8, ipp8, slat8, slon8, qlat18, qlon18, &
-             qdep18, qtim18, qlat28, qlon28, qdep28, qtim28, TTtabfile, boxwid, nit, irelonorm, &
+             qdep18, qtim18, qlat28, qlon28, qdep28, qtim28, &
+             ttab, deltab, deptab, ndel, ndep, boxwid, nit, irelonorm, &
              qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, cdist, torgdif, &
              resid8, rms, rmed, resol)
 !         print *, 'DIFCLUST: ',qlat1, qlon1, qdep1, qlat2, qlon2, qdep2, cdist, torgdif, rms, rmed, resol
@@ -1431,15 +1471,15 @@ program growclust
             dy = qlat(iq1) - slat(k)
             dx = (qlon(iq1) - slon(k))*cosqlat
             distance = sqrt(dx**2 + dy**2)*degkm
-            !print *, k, ipp(k), TTtabfile(ipp(k)), distance, qdep(iq1)
-            call GET_TTS_FAST8(TTtabfile(ipp(k)), ipp(k), distance, qdep(iq1), tsec1, iflag)
+            call GET_TTS_FAST8(ttab, deltab, deptab, ndel, ndep, &
+                 ipp(k), distance, qdep(iq1), tsec1, iflag)
             
-            ! predicted travel time from event1 to station
+            ! predicted travel time from event2 to station
             dy = qlat(iq2) - slat(k)
             dx = (qlon(iq2) - slon(k))*cosqlat
             distance = sqrt(dx**2 + dy**2)*degkm
-            !print *, k, TTtabfile(ipp(k)), ipp(k), distance, qdep(iq2)
-            call GET_TTS_FAST8(TTtabfile(ipp(k)), ipp(k), distance, qdep(iq2), tsec2, iflag)
+            call GET_TTS_FAST8(ttab, deltab, deptab, ndel, ndep, &
+                  ipp(k), distance, qdep(iq2), tsec2, iflag)
 
             ! predicted differential time      
             tdif_pred(k) = tsec2 - tsec1
@@ -1892,7 +1932,11 @@ end subroutine FIX_ORIGIN_TIME
 !           ip     =  array (len=npick) with phase index numbers (1 to 10) for tt data
 !           slat   =  array (len=npick) with station latitudes
 !           slon   =  array (len=npick) with station longitudes
-!           TTtabfile  =  array with phase names (travel time tables)
+!           ttab   =  travel time table for P and S phases (nx x nd x 2)
+!           xtab   =  distance array for travel time table (nx)
+!           dtab   =  depth array for travel time table (nd)
+!           nx     =  number of distance points in travel time table
+!           nd     =  number of depth points in travel time table
 !           boxwid =  starting box width (km)
 !           nit    =  number of iterations to perform
 !           inorm  =  relocation norm (1=L1, 2=L2, 3=robust L2)
@@ -1909,17 +1953,29 @@ end subroutine FIX_ORIGIN_TIME
 !           resol  =  nominal resolution (m) of final box
 !
 subroutine DIFLOC(qlat0,qlon0,qdep0,npick,tt,ip,slat,slon, &
-           TTtabfile,boxwid,nit,inorm,qlat1,qlon1,qdep1,qlat2,qlon2,qdep2, &
+           ttab,xtab,dtab,nx,nd,boxwid,nit,inorm, &
+           qlat1,qlon1,qdep1,qlat2,qlon2,qdep2, &
            torgdif,resid,rms,rmed,resol)
-   real*8 qlat0, qlon0, qlat1, qlon1, qlat2, qlon2, dlat, dlon, dlat0, dlon0, flat1, flat2, flon1, flon2, &
-          flatbest1, flonbest1, flatbest2, flonbest2
-          
+   
+   implicit none
+   integer, parameter :: nx0 = 501, nd0 = 201
+   
+   integer :: npick, nit, it, iy, ix, iz, i, iflag, inorm, nx, nd 
+   real :: degrad, degkm,  ddep0,  cosqlat,  ddep, fitbest, &
+           fdep1, fdep2, dx, dy, delkm, tsec1, tsec2, &
+           tdif, residmed, fit, fdepbest1, fdepbest2, tbest, qorg, torgdif,  &
+           rms, rmed,  qdep0, qdep1, qdep2, boxwid, resol, zboxwid 
+   real*8 qlat0, qlon0, qlat1, qlon1, qlat2, qlon2, dlat, dlon, dlat0, dlon0, &
+          flat1, flat2, flon1, flon2, flatbest1, flonbest1, flatbest2, flonbest2
+   
    real tt(npick), resid(npick)
    real*8 slat(npick), slon(npick)
    real rabs(3000)
    integer ip(npick)
-   character*100 TTtabfile(2)
-   integer inorm
+   real ttab(nx0,nd0,2)
+   real xtab(nx0)
+   real dtab(nd0)
+   
    degrad = 180./3.1415927
    degkm = 111.19493
 
@@ -1955,19 +2011,19 @@ subroutine DIFLOC(qlat0,qlon0,qdep0,npick,tt,ip,slat,slon, &
             do iz = -1, 1
                fdep1 = qdep0 + ddep0 + ddep*float(iz)
                fdep2 = qdep0 - ddep0 - ddep*float(iz)
-!               if (fdep1 < 0.) fdep1 = 0.                     !***now permit negative depths
-!               if (fdep2 < 0.) fdep2 = 0.
         
             ! compute predicted travel time and residual with observed  
                do i = 1, npick
                   dy = flat1 - slat(i)
                   dx = (flon1 - slon(i))*cosqlat
                   delkm = sqrt(dx**2 + dy**2)*degkm
-                  call GET_TTS_FAST8(TTtabfile(ip(i)), ip(i), delkm, fdep1, tsec1, iflag)
+                  call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+                       ip(i), delkm, fdep1, tsec1, iflag)
                   dy = flat2 - slat(i)
                   dx = (flon2 - slon(i))*cosqlat
                   delkm = sqrt(dx**2 + dy**2)*degkm
-                  call GET_TTS_FAST8(TTtabfile(ip(i)), ip(i), delkm, fdep2, tsec2, iflag)
+                  call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+                       ip(i), delkm, fdep2, tsec2, iflag)
                   tdif = tsec2 - tsec1
                   resid(i) = tt(i) - tdif
                enddo
@@ -2038,13 +2094,15 @@ subroutine DIFLOC(qlat0,qlon0,qdep0,npick,tt,ip,slat,slon, &
       dy = qlat1 - slat(i)
       dx = (qlon1 - slon(i))*cosqlat
       delkm = sqrt(dx**2 + dy**2)*degkm
-      call GET_TTS_FAST8(TTtabfile(ip(i)), ip(i), delkm, qdep1, tsec1, iflag) 
+      call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+                       ip(i), delkm, qdep1, tsec1, iflag) 
       
       ! event 2: for best-fit location, compute source station distance and predicted travel time   
       dy = qlat2 - slat(i)
       dx = (qlon2 - slon(i))*cosqlat
       delkm = sqrt(dx**2 + dy**2)*degkm
-      call GET_TTS_FAST8(TTtabfile(ip(i)), ip(i), delkm, qdep2, tsec2, iflag)
+      call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+                       ip(i), delkm, qdep2, tsec2, iflag)
       
       ! predicted differential time (t2-t1)
       tdif = tsec2 - tsec1
@@ -2094,7 +2152,11 @@ end subroutine DIFLOC
 !           qlon2  =  array (len=npick) of events in cluster2 longitude offsets
 !           qdep2  =  array (len=npick) of events in cluster2 depth offsets
 !           qorg2  =  array (len=npick) of events in cluster2 time offsets
-!           TTtabfile  =  array with phase names (travel time tables...)
+!           ttab   =  travel time table for P and S phases (nx x nd x 2)
+!           xtab   =  distance array for travel time table (nx)
+!           dtab   =  depth array for travel time table (nd)
+!           nx     =  number of distance points in travel time table
+!           nd     =  number of depth points in travel time table
 !           boxwid =  starting box width (km)
 !           nit    =  number of iterations to perform
 !           inorm  =  relocation norm (1=L1, 2=L2, 3=robust L2)
@@ -2113,12 +2175,16 @@ end subroutine DIFLOC
 !
 subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
            qlat1, qlon1, qdep1, qorg1, qlat2, qlon2, qdep2, qorg2, &
-           TTtabfile, boxwid, nit, inorm, clat1, clon1, cdep1, clat2, clon2, cdep2, &
+           ttab, xtab, dtab, nx, nd, boxwid, nit, inorm, &
+           clat1, clon1, cdep1, clat2, clon2, cdep2, &
            cdist, torgdif, resid, rms, rmed, resol)
+
+! define variables
    implicit none
    integer, parameter :: npickmax = 30000
+   integer, parameter :: nx0 = 501, nd0 = 201
    
-   integer :: npick, nit, it, iy, ix, iz, i, iflag, inorm 
+   integer :: npick, nit, it, iy, ix, iz, i, iflag, inorm, nx, nd 
    
    real :: degrad, degkm,  ddep0,  cosqlat,  ddep, fitbest, &
            fdep1, fdep2, dx, dy, delkm, tsec1, tsec2, &
@@ -2137,12 +2203,14 @@ subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
                              
    real, dimension(npickmax) :: rabs
    
-   character (len=100), dimension(2) :: TTtabfile
+   real ttab(nx0,nd0,2)
+   real xtab(nx0)
+   real dtab(nd0)
    
    degrad = 180./3.1415927
    degkm = 111.19493
 
-   
+  ! error checking 
    if (npick > npickmax) then
       print *, '***Error in DIFCLUST: npick > 30000, npick = ', npick
       stop
@@ -2180,8 +2248,6 @@ subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
             do iz = -1, 1
                fdep1 = qdep0 + ddep0 + ddep*float(iz)
                fdep2 = qdep0 - ddep0 - ddep*float(iz)
-!               if (fdep1 < 0.) fdep1 = 0.                   !****now permit negative depths
-!               if (fdep2 < 0.) fdep2 = 0.
         
         ! compute predicted travel time and residual with observed  
                do i = 1, npick
@@ -2189,12 +2255,14 @@ subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
                   dy = flat1 + qlat1(i) - slat(i)
                   dx = (flon1 + qlon1(i) - slon(i))*cosqlat
                   delkm = sqrt(dx**2 + dy**2)*degkm
-                  call GET_TTS_FAST8(TTtabfile(ip(i)), ip(i), delkm, fdep1 + qdep1(i), tsec1, iflag) 
+                  call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+                      ip(i), delkm, fdep1 + qdep1(i), tsec1, iflag) 
                                    
                   dy = flat2 +qlat2(i)- slat(i)
                   dx = (flon2 +qlon2(i) - slon(i))*cosqlat
                   delkm = sqrt(dx**2 + dy**2)*degkm
-                  call GET_TTS_FAST8(TTtabfile(ip(i)), ip(i), delkm, fdep2 + qdep2(i), tsec2, iflag)                  
+                  call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+                       ip(i), delkm, fdep2 + qdep2(i), tsec2, iflag)                  
                   
                   tdif = tsec2 + qorg2(i) - (tsec1 + qorg1(i))
                   resid(i) = tt(i) - tdif
@@ -2272,13 +2340,15 @@ subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
       dy = clat1 + qlat1(i) - slat(i)
       dx = (clon1 + qlon1(i) - slon(i))*cosqlat
       delkm = sqrt(dx**2 + dy**2)*degkm
-      call GET_TTS_FAST8(TTtabfile(ip(i)), ip(i), delkm, cdep1 + qdep1(i), tsec1, iflag)      
+      call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+         ip(i), delkm, cdep1 + qdep1(i), tsec1, iflag)      
  
     ! cluster 2: for best-fit location, compute source-station distance and predicted travel time    
       dy = clat2 + qlat2(i) - slat(i)
       dx = (clon2 + qlon2(i) - slon(i))*cosqlat
       delkm = sqrt(dx**2 + dy**2)*degkm
-      call GET_TTS_FAST8(TTtabfile(ip(i)), ip(i), delkm, cdep2 + qdep2(i), tsec2, iflag)
+      call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+        ip(i), delkm, cdep2 + qdep2(i), tsec2, iflag)
       
     ! predicted differential time (accounts for possible otime offset)
       tdif = tsec2 + qorg2(i) - (tsec1 + qorg1(i)) 
@@ -2310,122 +2380,97 @@ end subroutine DIFCLUST
 !-----------------------------------------------------------------------
 ! ******** GET_TTS_FAST8 obtains a travel time for a seismic phase
 ! at a specified range and earthquake depth by interpolating
-! from a file containing a table of travel times.  It differs
-! from GET_TT in that a number of different phase tables can
-! be called without reading them again from the files. This version modified to run faster
+! from a file containing a table of travel times. This version modified to run faster
 ! by assuming x and d are evenly spaced. Negative depths are permitted.
-!    Inputs:    phase  =  name of file containing travel time table
-!               ip     =  index number for phase (up to 10)
-!               del    =  range
-!               qdep   =  earthquake depth
-!    Returns:   tt     =  travel time (minutes)
+!    Inputs:    t	   =  travel time table (nx x nd)
+!               x      =  distance table (nx)
+!               d      =  depth table (nd)
+!               nx     =  number of distance points
+!               nd     =  number of depth points
+!               del    =  range for output for output travel time
+!               qdep   =  earthquake depth for output travel time
+!    Returns:   tt     =  travel time
 !               iflag  = -1 if outside depth range
 !                      =  0 for interpolation
 !                      =  1 for extrapolation in range
 !
-subroutine GET_TTS_FAST8(phase,ip,del,qdep8,tt,iflag)
+subroutine GET_TTS_FAST8(t,x,d,nx,nd,&
+           ip,del,qdep8,tt,iflag)
    implicit none
    
    integer, parameter :: nd0=201, nx0=501
      
-   integer :: id, id1, id2, iflag, ip, ix, ix1, ix2, ixbest1, ixbest2
+   integer :: id, id1, id2, iflag, ix, ix1, ix2, ixbest1, ixbest2, ip
+   integer :: nd, nx
       
    real :: del, dfrac, qdep, t1, t2, tt, tt1, tt2, xfrac, xfrac1, xfrac2, xoff, &
            xoffmin1, xoffmin2, qdep8, tdep, velsurf
-           
-   integer, dimension(2) :: nd, nx
+   real :: dd, dx
    
-   real, dimension(2) :: dd, dx 
+   real d(nd0)
+   real x(nx0)
+   real t(nx0,nd0,2)        
            
-   character (len=100) :: phase, linebuf
-   character (len=100), dimension(2) :: phaseold
-      
-      real d(nd0,2)
-      real x(nx0,2)
-      real t(nx0,nd0,2)
+   
+! calculate depth and distance spacing
+      dx = x(2)-x(1)
+      dd = d(2)-d(1)   
 
-      save t,x,d,phaseold,nx,nd,dx,dd
-!
-! read file if new phase file is specified
-!
-      if (phase.ne.phaseold(ip)) then
-         print *,'reading phase file name: ',phase(1:40)
-         open (3,file=phase,status='old',err=990)
-         read (3,'(a40)') linebuf   !ignore first line
-         read (3,*) nx(ip),nd(ip)
-         if (nx(ip).gt.nx0) then
-             print *,'***GET_TTS nx truncated ',nx(ip),nx0
-             nx(ip)=nx0
-         end if
-         if (nd(ip).gt.nd0) then
-             print *,'***GET_TTS nd truncated ',nd(ip),nd0
-             nd(ip)=nd0
-         end if
-         read (3,*) (d(id,ip),id=1,nd(ip))
-         do 20 ix=1,nx(ip)
-         read (3,*) x(ix,ip),(t(ix,id,ip),id=1,nd(ip))
-20       continue
-         close (3)
-         dx(ip)=x(2,ip)-x(1,ip)
-         dd(ip)=d(2,ip)-d(1,ip)
-      end if
-      phaseold(ip)=phase
-      
 ! negative depth check
       if (qdep8 < 0.) then
          qdep = 0.
-         velsurf = (d(2,ip) - d(1,ip))/(t(1,2,ip) - t(1,1,ip))
+         velsurf = dd/(t(1,2,ip)-t(1,1,ip))
          tdep = abs(qdep8)/velsurf
       else
          qdep = qdep8
          tdep = 0.
       end if      
       
-!
 ! check if outside depth range
-      if (qdep.lt.d(1,ip).or.qdep.gt.d(nd(ip),ip)) then
+      if (qdep.lt.d(1).or.qdep.gt.d(nd)) then
          iflag=-1
          tt=999
          return
       end if
-!
-! first check to see if interpolation alone will work
-      id1=1+int((qdep-d(1,ip))/dd(ip))
-      id2=id1+1
-      ix1=1+int((del-x(1,ip))/dx(ip))
-      ix2=ix1+1
 
-37    if (t(ix1,id1,ip).eq.0.) go to 50
+! first check to see if interpolation alone will work
+      id1=1+int((qdep-d(1))/dd)
+      id2=id1+1
+      ix1=1+int((del-x(1))/dx)
+      ix2=ix1+1
+      if (t(ix1,id1,ip).eq.0.) go to 50
       if (t(ix1,id2,ip).eq.0.) go to 50
       if (t(ix2,id1,ip).eq.0.) go to 50
       if (t(ix2,id2,ip).eq.0.) go to 50
-      if (x(ix2,ip).lt.del) go to 50
+      if (x(ix2).lt.del) go to 50
+      
+! yes, interpolate to get tt
       iflag=0
-      xfrac=(del-x(ix1,ip))/(x(ix2,ip)-x(ix1,ip))
-      t1=t(ix1,id1,ip)+xfrac*(t(ix2,id1,ip)-t(ix1,id1,ip))
-      t2=t(ix1,id2,ip)+xfrac*(t(ix2,id2,ip)-t(ix1,id2,ip))
-      dfrac=(qdep-d(id1,ip))/(d(id2,ip)-d(id1,ip))
-      tt=t1+dfrac*(t2-t1)
-      tt = tt + tdep                                  !***negative depth kludge
+      xfrac=(del-x(ix1))/dx                                ! fraction between x1 and x2
+      t1=t(ix1,id1,ip)+xfrac*(t(ix2,id1,ip)-t(ix1,id1,ip)) ! time at del, dep1
+      t2=t(ix1,id2,ip)+xfrac*(t(ix2,id2,ip)-t(ix1,id2,ip)) ! time at del, dep2
+      dfrac=(qdep-d(id1))/dd                               ! fraction between d1 and d2
+      tt=t1+dfrac*(t2-t1)                                  ! time at del, qdep
+      tt = tt + tdep                                       ! negative depth correction
       return
-!
-! extrapolate to get tt
+
+! extrapolate to get tt (consider throwing an error?)
 50    iflag=1
       xoffmin1=999.
       xoffmin2=999.
       ixbest1=999
       ixbest2=999
-      do 60 ix=2,nx(ip)
+      do 60 ix=2,nx
          if (t(ix-1,id1,ip).eq.0) go to 55
          if (t(ix,id1,ip).eq.0) go to 55
-         xoff=abs((x(ix-1,ip)+x(ix,ip))/2.-del)
+         xoff=abs((x(ix-1)+x(ix))/2.-del)
          if (xoff.lt.xoffmin1) then
             xoffmin1=xoff
             ixbest1=ix
          end if
 55       if (t(ix-1,id2,ip).eq.0) go to 60
          if (t(ix,id2,ip).eq.0) go to 60
-         xoff=abs((x(ix-1,ip)+x(ix,ip))/2.-del)
+         xoff=abs((x(ix-1)+x(ix))/2.-del)
          if (xoff.lt.xoffmin2) then
             xoffmin2=xoff
             ixbest2=ix
@@ -2437,25 +2482,27 @@ subroutine GET_TTS_FAST8(phase,ip,del,qdep8,tt,iflag)
          return
       end if
 
-      xfrac1=(del-x(ixbest1-1,ip))/(x(ixbest1,ip)-x(ixbest1-1,ip))
+      ! x1 fraction
+      xfrac1=(del-x(ixbest1-1))/dx
       t1=t(ixbest1-1,id1,ip)
       t2=t(ixbest1,id1,ip)
       tt1=t1+xfrac1*(t2-t1)
 
-      xfrac2=(del-x(ixbest2-1,ip))/(x(ixbest2,ip)-x(ixbest2-1,ip))
+      ! x2 fractiont
+      xfrac2=(del-x(ixbest2-1))/dx
       t1=t(ixbest2-1,id2,ip)
       t2=t(ixbest2,id2,ip)
       tt2=t1+xfrac2*(t2-t1)
 
-      dfrac=(qdep-d(id1,ip))/(d(id2,ip)-d(id1,ip))
+      ! final travel time at del, xdep
+      dfrac=(qdep-d(id1))/dd 
       tt=tt1+dfrac*(tt2-tt1)
       
-      tt = tt + tdep                                  !***negative depth kludge      
+      ! negative depth correction
+      tt = tt + tdep                 
 
       go to 999
-!      
-990   print *,'*** phase file not found: ',phase
-      print *, 'ip:', ip
+
       stop
 999   return
       end
