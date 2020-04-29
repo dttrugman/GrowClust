@@ -18,7 +18,7 @@
            (max rms residual to join clusters): rmsmax =  0.20
         (num. bootstrap uncertainty iterations): nboot =    10
  **************** Auxiliary Run Parameters *******************
-              min connection fraction to join clusters: 0.0100
+              min connection fraction to join clusters: 0.0010
                      max catalog dist to join clusters:   5.00
                    max relocated dist to join clusters:   3.00
              min number in cluster to apply shift test:      1
@@ -750,11 +750,12 @@
     746    442     1   705    746   706  1   8  -0.00612   0.00063  -0.65181   0.71488   0.01   0.00
     746   1194   706     1    746   707  4  32  -0.00211   0.00080  -1.41686   2.76068   0.01   0.00
     746   1150   707     1    746   708  1   8   0.00174   0.00346  -2.09274   1.40681   0.03   0.01
+    746    905   708     3    746   711  4  32   0.00894  -0.00415   1.85375   0.98235   0.04   0.03
    1098   1260     2     3   1098     5  1   8  -0.00372  -0.00574   0.02223   2.12658   0.01   0.00
-    388    746     1   708    388   709  1   8  -0.00154  -0.00400  -0.55106   1.94360   0.00   0.00
-    932    388     1   709    932   710  1   8  -0.00702   0.00352  -0.18794   1.06639   0.00   0.00
-    615    932     1   710    615   711  1   8  -0.00834   0.00047  -0.95147   2.38052   0.02   0.01
-    332    615     1   711    332   712  1   8   0.00145   0.00009  -0.19666   1.03269   0.07   0.00
+    388    746     1   711    388   712  1   8  -0.00154  -0.00400  -0.52651   1.94456   0.01   0.00
+    932    388     1   712    932   713  1   8  -0.00702   0.00352  -0.17906   1.06288   0.00   0.00
+    615    932     1   713    615   714  1   8  -0.00829   0.00041  -0.95147   2.37957   0.02   0.01
+    332    615     1   714    332   715  1   8   0.00145   0.00009  -0.16920   1.03318   0.07   0.00
  **************************************************************************************************
   
  ************************************  GROWCLUST Run Summary  *************************************
@@ -762,16 +763,16 @@
                              Number of catalog events:       1616
                            Number of relocated events:        732
                           Number of input event pairs:      50214
-                           Number of event pairs used:      48422
-                Number of xcor data used (total, P+S):     559275
-                   Number of xcor data used (P-phase):     315295
+                           Number of event pairs used:      48430
+                Number of xcor data used (total, P+S):     559341
+                   Number of xcor data used (P-phase):     315323
              RMS differential time residual (P-phase):     0.1573
    Mean (signed) differential time residual (P-phase):    -0.0172
-                   Number of xcor data used (S-phase):     243980
+                   Number of xcor data used (S-phase):     244018
              RMS differential time residual (S-phase):     0.1440
    Mean (signed) differential time residual (S-phase):    -0.0132
   
-                Number of clusters with >=   2 events:         7
+                Number of clusters with >=   2 events:         6
                 Number of clusters with >=   5 events:         2
                 Number of clusters with >=  10 events:         1
                 Number of clusters with >=  20 events:         1

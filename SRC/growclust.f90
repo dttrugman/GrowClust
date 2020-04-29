@@ -80,7 +80,7 @@ program growclust
 ! variables to store xcor file data
    integer, dimension(npair0) :: idcusp11, idcusp22, index1, index2, iqq1, iqq2
    integer, dimension(ndif0) :: ipp
-   real, dimension(ndif0) :: rxcor, tdif, dist
+   real, dimension(ndif0) :: rxcor, tdif, dist, selev
    real(dp), dimension(ndif0) :: slat, slon
    !character (len=12), dimension(ndif0) :: stname
    character (len=5), dimension(ndif0) :: stname
@@ -121,7 +121,7 @@ program growclust
    integer, dimension(npair0) :: idcusp1100, idcusp2200
    integer, dimension(npair0) :: index100, index200, iqq100, iqq200
    integer, dimension(ndif0) :: ipp00
-   real, dimension(ndif0) :: rxcor00, tdif00, dist00
+   real, dimension(ndif0) :: rxcor00, tdif00, dist00, selev00
    real(dp), dimension(ndif0) :: slat00, slon00
 
 ! variables for resampling
@@ -379,15 +379,15 @@ program growclust
 
     ! READ_XCORDATA: Reads xcor data and associated station locations
     ! -- output event pair arrays: iqq1, iqq2, idcusp11, idcusp22, index1, index2
-    ! -- output tdif/phase arrays: stname, ipp, tdif, rxcor, dist, slat, slon
+    ! -- output tdif/phase arrays: stname, ipp, tdif, rxcor, dist, slat, slon, selev
     print *, ' '
     !print *, 'Reading xcor data...'
     call TIMER
     call READ_XCORDATA(xcordat_fmt, tdif_fmt, infile_xcordat, npair0, ndif0, nq, max_qid, &
      qid2qnum, qlat, qlon, rmincut, rmin, delmax, rpsavgmin, iponly, ngoodmin, & 
-     nsta, slnames, sllats, sllons, slkeys, &
+     nsta, slnames, sllats, sllons, slelevs,slkeys, &
      npair, nk, iqq1, iqq2, idcusp11, idcusp22, index1, index2, &
-     stname, ipp, tdif, rxcor, dist, slat, slon)
+     stname, ipp, tdif, rxcor, dist, slat, slon, selev)
     call TIMER
      
   ! for robustness, final check to make sure nq, npair, nk are not too large (edit 11/2016)
@@ -428,6 +428,7 @@ program growclust
       ipp00(k) = ipp(k)
       slat00(k) = slat(k)
       slon00(k) = slon(k)
+      selev00(k) = selev(k)
       tdif00(k) = tdif(k)
       rxcor00(k) = rxcor(k)
       dist00(k) = dist(k)
@@ -621,9 +622,9 @@ program growclust
    j = iqq2(ip)
    idcusp_i = idcusp11(ip)
    idcusp_j = idcusp22(ip)
-   print *, 'quake numbers for best pair = ', i, j
-   print *, 'cuspids for best pair = ', idcusp_i, idcusp_j
-   print *, 'cuspids from evlist = ', idcusp(i), idcusp(j)
+   print *, 'serial event numbers for best pair = ', i, j
+   print *, 'evids for best pair = ', idcusp_i, idcusp_j
+   print *, 'evids from evlist = ', idcusp(i), idcusp(j)
    if (idcusp_i /= idcusp(i) .or. idcusp_j /= idcusp(j) ) then
       print *, '***Error, index problem in evlist.  Likely not same file as used for xcor calculation.'
       write (16, *) '***Error, index problem in evlist.  Likely not same file as used for xcor calculation.'
@@ -647,6 +648,7 @@ program growclust
    qdep0 = (qdep1 + qdep2)/2.
    print *, 'mean loc = ', qlat0, qlon0, qdep0-datum
    
+   ! number of differential times for this pair
    npick = index2(ip) - index1(ip) + 1
    if (npick > n0) then
       print *, '***Error, npick too big:', npick, n0
@@ -774,7 +776,7 @@ program growclust
             stop
         endif
    
-       ! resample ipp, dtt, rxcor, stlon, stlat, dist
+       ! resample ipp, dtt, rxcor, stlon, stlat, stelev, dist
             ! note, we are not resampling station names, for speed
             ! also assumes index1 and index2 are consistent across iterations (type1), or have been fixed above (type2)
         call RESAMPLE_IDATAVEC(ipp00(1:nk), ipp(1:nk), samp_vec(1:nk), nk)
@@ -783,7 +785,7 @@ program growclust
         call RESAMPLE_FDATAVEC(rxcor00(1:nk), rxcor(1:nk), samp_vec(1:nk), nk)
         call RESAMPLE_DFDATAVEC(slon00(1:nk), slon(1:nk), samp_vec(1:nk), nk)
         call RESAMPLE_DFDATAVEC(slat00(1:nk), slat(1:nk), samp_vec(1:nk), nk)
-    
+        !call RESAMPLE_FDATAVEC(selev00(1:nk), selev(1:nk), samp_vec(1:nk), nk) ! not currently used
    
        !------- compute event pair quality (similarity) factors for resampled data ------!
        iqmax = 0 
@@ -1070,7 +1072,7 @@ program growclust
          clon2 = (qlon1*nbranch_i + qlon2*nbranch_j)/real(nbranch_i + nbranch_j)
          cdep2 = (qdep1*nbranch_i + qdep2*nbranch_j)/real(nbranch_i + nbranch_j)
          
-    ! if number events in cluster i is > nclustshiftmin, test if centroid moves too far
+         ! if number events in cluster i is > nclustshiftmin, test if centroid moves too far
          if (nbranch_i >= nclustshiftmin) then
             dy = qlat1 - tlat(index(i)) - (clat2 - clat1)        !new loc - old loc
             dx = qlon1 - tlon(index(i)) - (clon2 - clon1)
@@ -1091,7 +1093,7 @@ program growclust
             
          endif
          
-    ! if number events in cluster j is > nclustshiftmin, test if centroid moves too far        
+         ! if number events in cluster j is > nclustshiftmin, test if centroid moves too far        
          if (nbranch_j >= nclustshiftmin) then
             dy = qlat2 - tlat(index(j)) - (clat2 - clat1)        !new loc - old loc
             dx = qlon2 - tlon(index(j)) - (clon2 - clon1)
@@ -1471,14 +1473,14 @@ program growclust
             dy = qlat(iq1) - slat(k)
             dx = (qlon(iq1) - slon(k))*cosqlat
             distance = sqrt(dx**2 + dy**2)*degkm
-            call GET_TTS_FAST8(ttab, deltab, deptab, ndel, ndep, &
+            call GET_TT_FAST(ttab, deltab, deptab, ndel, ndep, &
                  ipp(k), distance, qdep(iq1), tsec1, iflag)
             
             ! predicted travel time from event2 to station
             dy = qlat(iq2) - slat(k)
             dx = (qlon(iq2) - slon(k))*cosqlat
             distance = sqrt(dx**2 + dy**2)*degkm
-            call GET_TTS_FAST8(ttab, deltab, deptab, ndel, ndep, &
+            call GET_TT_FAST(ttab, deltab, deptab, ndel, ndep, &
                   ipp(k), distance, qdep(iq2), tsec2, iflag)
 
             ! predicted differential time      
@@ -1970,7 +1972,7 @@ subroutine DIFLOC(qlat0,qlon0,qdep0,npick,tt,ip,slat,slon, &
    
    real tt(npick), resid(npick)
    real*8 slat(npick), slon(npick)
-   real rabs(3000)
+   real rabs(1000)
    integer ip(npick)
    real ttab(nx0,nd0,2)
    real xtab(nx0)
@@ -2014,18 +2016,37 @@ subroutine DIFLOC(qlat0,qlon0,qdep0,npick,tt,ip,slat,slon, &
         
             ! compute predicted travel time and residual with observed  
                do i = 1, npick
+                  
+                  ! event 1
                   dy = flat1 - slat(i)
                   dx = (flon1 - slon(i))*cosqlat
                   delkm = sqrt(dx**2 + dy**2)*degkm
-                  call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+                  call GET_TT_FAST(ttab, xtab, dtab, nx, nd, &
                        ip(i), delkm, fdep1, tsec1, iflag)
+                  if (iflag < 0) then
+                  	 print *, 'Error in DIFLOC: outside travel time table bounds.'
+                  	 print *, 'Depth:', fdep1
+                  	 print *, 'Distance:', delkm
+                  	 stop
+                  endif  
+                  
+                  ! event 2
                   dy = flat2 - slat(i)
                   dx = (flon2 - slon(i))*cosqlat
                   delkm = sqrt(dx**2 + dy**2)*degkm
-                  call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+                  call GET_TT_FAST(ttab, xtab, dtab, nx, nd, &
                        ip(i), delkm, fdep2, tsec2, iflag)
+                  if (iflag < 0) then
+                  	 print *, 'Error in DIFLOC: outside travel time table bounds.'
+                  	 print *, 'Depth:', fdep2
+                  	 print *, 'Distance:', delkm
+                  	 stop
+                  endif 
+                  
+                  ! differential travel time
                   tdif = tsec2 - tsec1
                   resid(i) = tt(i) - tdif
+                  
                enddo
                
                 ! compute fit --> L1 norm of residual (sum of absolute residuals) or L2 norm
@@ -2081,7 +2102,7 @@ subroutine DIFLOC(qlat0,qlon0,qdep0,npick,tt,ip,slat,slon, &
    qlat1 = flatbest1
    qlon1 = flonbest1
    qdep1 = fdepbest1
-   qlat2 =  flatbest2
+   qlat2 = flatbest2
    qlon2 = flonbest2
    qdep2 = fdepbest2
    resol = (dlat/0.67)*degkm
@@ -2094,14 +2115,14 @@ subroutine DIFLOC(qlat0,qlon0,qdep0,npick,tt,ip,slat,slon, &
       dy = qlat1 - slat(i)
       dx = (qlon1 - slon(i))*cosqlat
       delkm = sqrt(dx**2 + dy**2)*degkm
-      call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+      call GET_TT_FAST(ttab, xtab, dtab, nx, nd, &
                        ip(i), delkm, qdep1, tsec1, iflag) 
       
       ! event 2: for best-fit location, compute source station distance and predicted travel time   
       dy = qlat2 - slat(i)
       dx = (qlon2 - slon(i))*cosqlat
       delkm = sqrt(dx**2 + dy**2)*degkm
-      call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+      call GET_TT_FAST(ttab, xtab, dtab, nx, nd, &
                        ip(i), delkm, qdep2, tsec2, iflag)
       
       ! predicted differential time (t2-t1)
@@ -2116,15 +2137,6 @@ subroutine DIFLOC(qlat0,qlon0,qdep0,npick,tt,ip,slat,slon, &
    ! return rms residual and median absolute residual residual
    rms = sqrt(rms/float(npick))
    call MEDIAN(rabs, npick, rmed) ! always return median abs. residual for consistency (L1 and L2 norms)
-!   ! median/mean/robomean residual instead
-!    if (inorm .eq. 1) then         ! L1 NORM
-!       call MEDIAN(rabs,npick,rmed)
-!    else if (inorm .eq. 2) then    ! L2 NORM
-!       call MEAN(resid,npick,rmed)
-!    else if (inorm .eq. 3) then    ! robust L2 NORM
-!      xgap=0.1
-!      call ROBOMEAN2(resid,npick,xgap,10,rmed,fit2) 
-!    end if
            
 end subroutine DIFLOC
       
@@ -2181,7 +2193,7 @@ subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
 
 ! define variables
    implicit none
-   integer, parameter :: npickmax = 30000
+   integer, parameter :: npickmax = 10000 ! 1000 per pair x 10
    integer, parameter :: nx0 = 501, nd0 = 201
    
    integer :: npick, nit, it, iy, ix, iz, i, iflag, inorm, nx, nd 
@@ -2252,20 +2264,36 @@ subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
         ! compute predicted travel time and residual with observed  
                do i = 1, npick
                
+                  ! event/cluster 1
                   dy = flat1 + qlat1(i) - slat(i)
                   dx = (flon1 + qlon1(i) - slon(i))*cosqlat
                   delkm = sqrt(dx**2 + dy**2)*degkm
-                  call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+                  call GET_TT_FAST(ttab, xtab, dtab, nx, nd, &
                       ip(i), delkm, fdep1 + qdep1(i), tsec1, iflag) 
-                                   
+                  if (iflag < 0) then
+                  	 print *, 'Error in DIFCLUST: outside travel time table bounds.'
+                  	 print *, 'Depth:', fdep1 + qdep1(i)
+                  	 print *, 'Distance:', delkm
+                  	 stop
+                  endif  
+                   
+                  ! event/cluster 2                 
                   dy = flat2 +qlat2(i)- slat(i)
                   dx = (flon2 +qlon2(i) - slon(i))*cosqlat
                   delkm = sqrt(dx**2 + dy**2)*degkm
-                  call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
-                       ip(i), delkm, fdep2 + qdep2(i), tsec2, iflag)                  
+                  call GET_TT_FAST(ttab, xtab, dtab, nx, nd, &
+                       ip(i), delkm, fdep2 + qdep2(i), tsec2, iflag)
+                  if (iflag < 0) then
+                  	 print *, 'Error in DIFCLUST: outside travel time table bounds.'
+                  	 print *, 'Depth:', fdep2 + qdep2(i)
+                  	 print *, 'Distance:', delkm
+                  	 stop
+                  endif                   
                   
+                  ! differential travel time (accounting for origin time adjustments)
                   tdif = tsec2 + qorg2(i) - (tsec1 + qorg1(i))
                   resid(i) = tt(i) - tdif
+                  
                enddo
                
                ! compute fit (L1 or L2 norms)
@@ -2340,14 +2368,14 @@ subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
       dy = clat1 + qlat1(i) - slat(i)
       dx = (clon1 + qlon1(i) - slon(i))*cosqlat
       delkm = sqrt(dx**2 + dy**2)*degkm
-      call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+      call GET_TT_FAST(ttab, xtab, dtab, nx, nd, &
          ip(i), delkm, cdep1 + qdep1(i), tsec1, iflag)      
  
     ! cluster 2: for best-fit location, compute source-station distance and predicted travel time    
       dy = clat2 + qlat2(i) - slat(i)
       dx = (clon2 + qlon2(i) - slon(i))*cosqlat
       delkm = sqrt(dx**2 + dy**2)*degkm
-      call GET_TTS_FAST8(ttab, xtab, dtab, nx, nd, &
+      call GET_TT_FAST(ttab, xtab, dtab, nx, nd, &
         ip(i), delkm, cdep2 + qdep2(i), tsec2, iflag)
       
     ! predicted differential time (accounts for possible otime offset)
@@ -2363,25 +2391,15 @@ subroutine DIFCLUST(qlat0, qlon0, qdep0, npick, tt, ip, slat, slon, &
    ! output RMS and median/mean absolute residual between observed and predicted travel time
    rms = sqrt(rms/float(npick)) ! SSE --> RMS
    call MEDIAN(rabs, npick, rmed) ! always return median abs. residual for consistency (L1 and L2 norms)
-!   ! median/mean/robomean residual instead
-!    if (inorm .eq. 1) then         ! L1 NORM
-!       call MEDIAN(rabs,npick,rmed)
-!    else if (inorm .eq. 2) then    ! L2 NORM
-!       call MEAN(resid,npick,rmed)
-!    else if (inorm .eq. 3) then    ! robust L2 NORM
-!      xgap=0.1
-!      call ROBOMEAN2(resid,npick,xgap,10,rmed,fit2) 
-!    end if
 
 end subroutine DIFCLUST
 
-
-
+   
 !-----------------------------------------------------------------------
-! ******** GET_TTS_FAST8 obtains a travel time for a seismic phase
+! ******** GET_TT_FAST obtains a travel time for a seismic phase
 ! at a specified range and earthquake depth by interpolating
 ! from a file containing a table of travel times. This version modified to run faster
-! by assuming x and d are evenly spaced. Negative depths are permitted.
+! by assuming x and d are evenly spaced. Negative source depths are permitted.
 !    Inputs:    t	   =  travel time table (nx x nd)
 !               x      =  distance table (nx)
 !               d      =  depth table (nd)
@@ -2390,23 +2408,19 @@ end subroutine DIFCLUST
 !               del    =  range for output for output travel time
 !               qdep   =  earthquake depth for output travel time
 !    Returns:   tt     =  travel time
-!               iflag  = -1 if outside depth range
+!               iflag  = -1 if outside depth or distance range
 !                      =  0 for interpolation
 !                      =  1 for extrapolation in range
 !
-subroutine GET_TTS_FAST8(t,x,d,nx,nd,&
+subroutine GET_TT_FAST(t,x,d,nx,nd,&
            ip,del,qdep8,tt,iflag)
+           
+! define variables
    implicit none
-   
-   integer, parameter :: nd0=201, nx0=501
-     
-   integer :: id, id1, id2, iflag, ix, ix1, ix2, ixbest1, ixbest2, ip
-   integer :: nd, nx
-      
+   integer, parameter :: nd0=201, nx0=501 ! travel time setup
+   integer :: id, id1, id2, iflag, ix, ix1, ix2, ixbest1, ixbest2, ip, nd, nx
    real :: del, dfrac, qdep, t1, t2, tt, tt1, tt2, xfrac, xfrac1, xfrac2, xoff, &
-           xoffmin1, xoffmin2, qdep8, tdep, velsurf
-   real :: dd, dx
-   
+           xoffmin1, xoffmin2, qdep8, tdep, velsurf, dd, dx
    real d(nd0)
    real x(nx0)
    real t(nx0,nd0,2)        
@@ -2426,8 +2440,8 @@ subroutine GET_TTS_FAST8(t,x,d,nx,nd,&
          tdep = 0.
       end if      
       
-! check if outside depth range
-      if (qdep.lt.d(1).or.qdep.gt.d(nd)) then
+! check if outside depth or distance range
+      if (qdep.lt.d(1) .or. qdep.gt.d(nd) .or. del.lt.x(1) .or. del.gt.x(nx)) then
          iflag=-1
          tt=999
          return
@@ -2442,7 +2456,6 @@ subroutine GET_TTS_FAST8(t,x,d,nx,nd,&
       if (t(ix1,id2,ip).eq.0.) go to 50
       if (t(ix2,id1,ip).eq.0.) go to 50
       if (t(ix2,id2,ip).eq.0.) go to 50
-      if (x(ix2).lt.del) go to 50
       
 ! yes, interpolate to get tt
       iflag=0
@@ -2454,59 +2467,71 @@ subroutine GET_TTS_FAST8(t,x,d,nx,nd,&
       tt = tt + tdep                                       ! negative depth correction
       return
 
-! extrapolate to get tt (consider throwing an error?)
-50    iflag=1
-      xoffmin1=999.
-      xoffmin2=999.
-      ixbest1=999
-      ixbest2=999
+! no, extrapolate to get tt
+!   - note, this is for points within the table bounds only but that have
+!      zeroed values at any of the four corners bracketing the desired (x,z)
+
+50    iflag=1       ! set flag to "extrapolate"
+      xoffmin1=999. ! closest dx between desired del at depth1
+      ixbest1=999   ! table index for this
+      xoffmin2=999. ! dx between desired del at depth2
+      ixbest2=999   ! table index for this
+
+! loop over all offsets      
       do 60 ix=2,nx
+      
+         ! look for top depth point
          if (t(ix-1,id1,ip).eq.0) go to 55
          if (t(ix,id1,ip).eq.0) go to 55
          xoff=abs((x(ix-1)+x(ix))/2.-del)
-         if (xoff.lt.xoffmin1) then
+         if (xoff.lt.xoffmin1) then ! found nearby point
             xoffmin1=xoff
             ixbest1=ix
          end if
+         
+         ! look for bottom depth point
 55       if (t(ix-1,id2,ip).eq.0) go to 60
          if (t(ix,id2,ip).eq.0) go to 60
-         xoff=abs((x(ix-1)+x(ix))/2.-del)
+         xoff=abs((x(ix-1)+x(ix))/2.-del) ! found nearby point
          if (xoff.lt.xoffmin2) then
             xoffmin2=xoff
             ixbest2=ix
          end if
-60    continue
+60    continue ! end of do loop
+
+! if we found the closest bottom and top point, continue onward
       if (ixbest1.eq.999.or.ixbest2.eq.999) then
          iflag=-1
          tt=999
          return
       end if
 
-      ! x1 fraction
+      ! travel time at top depth point
       xfrac1=(del-x(ixbest1-1))/dx
       t1=t(ixbest1-1,id1,ip)
       t2=t(ixbest1,id1,ip)
       tt1=t1+xfrac1*(t2-t1)
 
-      ! x2 fractiont
+      ! travel time at bottom depth point
       xfrac2=(del-x(ixbest2-1))/dx
       t1=t(ixbest2-1,id2,ip)
       t2=t(ixbest2,id2,ip)
       tt2=t1+xfrac2*(t2-t1)
 
-      ! final travel time at del, xdep
+      ! final estimated travel time at del, qdep
       dfrac=(qdep-d(id1))/dd 
       tt=tt1+dfrac*(tt2-tt1)
       
-      ! negative depth correction
+      ! negative source depth correction
       tt = tt + tdep                 
 
+      ! successful exit
       go to 999
 
+      ! unsuccessful exit
       stop
+      
 999   return
-      end
-   
-   
+      end  
    
    

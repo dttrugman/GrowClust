@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2018 Daniel Trugman
+! Copyright 2020 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -550,24 +550,28 @@ end subroutine READ_STLIST
 !  Inputs : stname    =  5-char station name to search for
 !           nsta      =  total number of stations
 !           snames   =  array(len=nsta) of 5 char station names, sorted
-!           slats     =  array(len=nsta) of station latitudes, sorted
-!           slons     =  array(len=nsta) of station longitudes, sorted
 !           skeys     =  array(len=256) that tracks index w/in stnames that a letter first appears
 !                         This is useful to quickly look up a station name
+!           slats     =  array(len=nsta) of station latitudes, sorted
+!           slons     =  array(len=nsta) of station longitudes, sorted
+!           selevs    =  array(len=nsta) of station elevations (m), soreted
 !           
 !  Returns: slat      = station latitude corresponding to stname (-999 is no match)
-!           slon      = station longitude corresponding to stname (-999 is no mathc)
+!           slon      = station longitude corresponding to stname (-999 is no match)
+!           selev     = station elevation corresponding to stname, m (-999 is no match)
 ! 
 !-----------------------------------------------------------------------------------------
 
-subroutine LOOKUP_STA(stname, nsta, snames, skeys, slats, slons, slat, slon)
+subroutine LOOKUP_STA(stname, nsta, snames, skeys, slats, slons, selevs, slat, slon, selev)
 
    ! declare variables
    implicit none
    integer, parameter     :: dp=kind(0.d0)                   ! double precision
    integer :: i, isite, istart, nsta
    real(dp) :: slat, slon
+   real     :: selev
    real(dp), dimension(nsta) :: slats, slons
+   real, dimension(nsta) :: selevs
    character (len=5), dimension(nsta) :: snames
    character (len=5) :: stname
    integer, dimension(256) :: skeys
@@ -588,6 +592,7 @@ subroutine LOOKUP_STA(stname, nsta, snames, skeys, slats, slons, slat, slon)
       if (stname(1:5) == snames(i)(1:5)) then
          slat= slats(i)
          slon= slons(i)
+         selev = selevs(i)
          return
       endif
    enddo
@@ -624,6 +629,7 @@ end subroutine LOOKUP_STA
 !           slnames   =  array (len=nsta) of 5-char station names 
 !           sllats    =  array (len=nsta) of station lats
 !           sllons    =  array (len=nsta) of station lons
+!           slelevs   =  array (len=nsta) of station elevations
 !           slkeys    =  key array to help with station search
 !           
 !  Returns: npair     =  actual number of event pairs kept
@@ -641,13 +647,14 @@ end subroutine LOOKUP_STA
 !           dist      =  array(len=nk) of average station distance for each tdif observation
 !           slat      =  array(len=nk) of station latitudes for each tdif observation
 !           slon      =  array(len=nk) of station longitudes for each tdif observation
+!           selev     =  array(len=nk) of station elevations for each tdif observation
 !-----------------------------------------------------------------------------------------
 
    subroutine READ_XCORDATA(irxform, it12form, xcorfile, npair0, ndif0, nq,  &
      max_qid, qid2qnum, qlat, qlon, rmincut, rmin_ngood, delmax, rpsavgmin,  &
-     iponly, ngoodmin, nsta, slnames, sllats, sllons, slkeys, &
+     iponly, ngoodmin, nsta, slnames, sllats, sllons, slelevs, slkeys, &
      npair, nk, iqq1, iqq2, idcusp11, idcusp22, index1, index2, &
-     stname, ipp, tdif, rxcor, dist, slat, slon)
+     stname, ipp, tdif, rxcor, dist, slat, slon, selev)
     
     implicit none
     
@@ -672,6 +679,7 @@ end subroutine LOOKUP_STA
     real, dimension(ndif0) :: rxcor, tdif, dist, rxcorB, tdifB, distB
     real(dp), dimension(nq) :: qlat, qlon
     real(dp), dimension(ndif0) :: slat, slon
+    real, dimension(ndif0) :: selev
     character (len=100) :: xcorfile, linebuf
     character (len=12), dimension(ndif0) :: stnameB
     character (len=5), dimension(ndif0) :: stname
@@ -681,7 +689,8 @@ end subroutine LOOKUP_STA
     
     integer, dimension (1000) :: keepkk_pr, ipp_pr
     real, dimension (1000) :: tdif_pr, rxcor_pr, dist_pr
-    real(dp), dimension (1000) :: slat_pr, slon_pr 
+    real(dp), dimension (1000) :: slat_pr, slon_pr
+    real, dimension (1000) :: selev_pr 
     character (len=12), dimension(1000) :: stname_pr
     
     ! added July 2018
@@ -689,6 +698,7 @@ end subroutine LOOKUP_STA
     integer, dimension(max_qid) :: qid2qnum
     character (len=5), dimension(nsta) :: slnames
     real(dp), dimension (nsta) :: sllats, sllons
+    real, dimension (nsta) :: slelevs
     integer, dimension(256) :: slkeys
     
      
@@ -919,7 +929,8 @@ end subroutine LOOKUP_STA
        
     ! get station locations: Fast lookup with alphabetized stlist, added 07/2018
       do k = 1, nk
-        call LOOKUP_STA(stname(k), nsta, slnames, slkeys, sllats, sllons, slat(k), slon(k))
+        call LOOKUP_STA(stname(k), nsta, slnames, slkeys, sllats, sllons, slelevs, &
+               slat(k), slon(k), selev(k))
         if (slat(k) < -99.) then
          print *,'ERROR: station not found, stname = ', stname(k)
          print *, 'Ending program: xcor data and station list inconsistent'
@@ -981,6 +992,7 @@ end subroutine LOOKUP_STA
               dist(k2) = dist_pr(k)
               slat(k2) = slat_pr(k)
               slon(k2) = slon_pr(k)
+              selev(k2) = selev_pr(k)
               stname(k2)(1:5) = stname_pr(k)(1:5)
              endif
           enddo
@@ -1076,7 +1088,8 @@ end subroutine LOOKUP_STA
         ! ---- get station distance ------
         
         ! fast lookup using the alphabetized station list
-        call LOOKUP_STA(stname_pr(kk), nsta, slnames, slkeys, sllats, sllons, slat_pr(kk), slon_pr(kk))
+        call LOOKUP_STA(stname_pr(kk), nsta, slnames, slkeys, sllats, sllons, slelevs, &
+            slat_pr(kk), slon_pr(kk), selev_pr(kk))
                 
         ! make sure station exists....
         if (slat_pr(kk) < -99.) then
@@ -1163,6 +1176,7 @@ end subroutine LOOKUP_STA
               dist(k2) = dist_pr(k)
               slat(k2) = slat_pr(k)
               slon(k2) = slon_pr(k)
+              selev(k2) = selev_pr(k)
               stname(k2)(1:5) = stname_pr(k)(1:5)
              endif
           enddo

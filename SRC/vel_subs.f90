@@ -120,8 +120,7 @@
 
 !-----------------------------------------------------------------------
 ! DEPTABLE creates tables of seismic travel times as a function of distance
-! and source depth.  These tables are evenly spaced and designed to be read
-! with the GET_TTS subroutines.
+! and source depth.  These tables are evenly spaced.
 !
 !    Inputs:    vmodel   = filename of velocity model (interpolated to spacing dep3 or finer)
 !               iw       = phase index: 1 = P, 2 = S
@@ -137,15 +136,15 @@
 !               nz0      = maximum number of depth points
 !               ttfile   = name of output travel time table file
 !
-!   Returns:    ttab     = output travel time table
-!               xtab     = output depth table
-!               ztab     = output del table  
+!   Returns:    outTT    = output travel time table
+!               outX     = output del table
+!               outZ     = output depth table  
 !               nx       = number of del points
 !               nz       = number of depth points
 !
 !-----------------------------------------------------------------------
       subroutine deptable(vmodel,iw,plongcut,dep1,dep2,dep3,del1,del2,del3,ideprad,&
-                           nx0, nz0, ttfile, ttab, xtab, ztab, nx, nz)
+                           nx0, nz0, ttfile, outTT, outX, outZ, nx, nz)
       implicit none
 
 ! parameters
@@ -154,7 +153,7 @@
 ! ncount0 = 2*nray0
 ! erad = earth radius in km
       integer npts0,nray0,ncount0
-      parameter (npts0=1000,nray0=40002,ncount0=80002)
+      parameter (npts0=1000,nray0=40002,ncount0=80004)
       real erad,pi
       parameter (erad=6371., pi=3.1415927)
 
@@ -162,23 +161,21 @@
       integer npts,ndep,nray,ncount,ndel,nx,nz, nx0, nz0
       integer ideptype,idep,itype,icount,idel,iw,imth,irtr
       integer i,j,i2,ip,ideprad
-
       real ecircum,kmdeg,degrad
       real p,pmin,pmax,pstep,plongcut,zmax,frac,h
       real dep,dep1,dep2,dep3,del,del1,del2,del3,deldel
       real scr1,scr2,scr3,scr4,xold,x,x1,x2,dx,t,t2,dt
       real tbest
       real xsave(ncount0),tsave(ncount0),psave(ncount0)
-      real deptab(nz0),ptab(nray0),delttab(nray0)
-      real z(npts0),alpha(npts0),beta(npts0)
+      real qdeptab(nz0),sdeltab(nx0)
+      real z(npts0),alpha(npts0),beta(npts0),slow(npts0,2)
       real z_s(npts0),alpha_s(npts0),beta_s(npts0)
-      real slow(npts0,2),deltab(nray0),tttab(nray0)
+      real del2W(nray0),tt2W(nray0),ptab(nray0)
       real tt(nx0,nz0)
-      real ttab(nx0,nz0,2)
-      real xtab(nx0)
-      real ztab(nz0)
-      real depxcor(nray0,nz0),deptcor(nray0,nz0)
-
+      real qdepxcor(nray0,nz0),qdeptcor(nray0,nz0)
+      real outTT(nx0,nz0,2)
+      real outX(nx0)
+      real outZ(nz0)
       character*100 vmodel
       character*100 ttfile
 
@@ -259,7 +256,7 @@
       ndep = floor((dep2+dep3/10.-dep1)/dep3)+1 ! (note, this value has been checked on input)
       do idep = 1,ndep
         dep = dep1 + (idep-1)*dep3
-        deptab(idep)=dep
+        qdeptab(idep)=dep
       enddo
 
 ! get number of rays to compute     
@@ -290,15 +287,15 @@
          !preferred v(z) interpolation method, optimal for flat-earth transform
          imth=3
          
-         ! initialize arrays: depxcor, deptcor, depucor (size nray by ndep), which track
-         ! the offset (x) and travel time (t) for different rays to different depths 
+         ! initialize arrays: qdepxcor, qdeptcor (size nray by ndep), which track
+         ! the offset (x) and travel time (t) for different rays to different source depths 
          do idep=1,ndep
-            if (deptab(idep).eq.0.) then
-               depxcor(ip,idep)=0.
-               deptcor(ip,idep)=0.
+            if (qdeptab(idep).eq.0.) then
+               qdepxcor(ip,idep)=0.
+               qdeptcor(ip,idep)=0.
             else
-               depxcor(ip,idep)=-999.
-               deptcor(ip,idep)=-999.
+               qdepxcor(ip,idep)=-999.
+               qdeptcor(ip,idep)=-999.
             end if
         enddo
 
@@ -306,8 +303,8 @@
          
              !check to see if z exceeds zmax
              if (z_s(i).ge.zmax) then                          
-                deltab(ip)=-999.
-                tttab(ip)=-999.
+                del2W(ip)=-999.
+                tt2W(ip)=-999.
                 go to 200
              end if
 
@@ -339,9 +336,9 @@
          
             ! save current x,t,u for ray sampling source depths (stored in deptab)
              do idep=1,ndep
-                if (abs(z_s(i+1)-deptab(idep)).lt.dep3/10.) then
-                   depxcor(ip,idep)=x
-                   deptcor(ip,idep)=t
+                if (abs(z_s(i+1)-qdeptab(idep)).lt.dep3/10.) then
+                   qdepxcor(ip,idep)=x
+                   qdeptcor(ip,idep)=t
                 end if
              enddo
 
@@ -349,8 +346,8 @@
          enddo !------------ end loop on layers----------------------------------
          
          ! compute final (surface-to-surface) two-way offset and travel times for ray
-         deltab(ip)=2*x                   !stored in km
-         tttab(ip)=2*t                    !stored in seconds
+         del2W(ip)=2*x                   !stored in km
+         tt2W(ip)=2*t                    !stored in seconds
 
       enddo             !---------------- end loop on ray parameter p --------------------
       print *,'Completed ray tracing loop'
@@ -361,15 +358,15 @@
          nray=nray+1
          ip = nray
          ptab(ip)=slow(1,iw)
-         deltab(ip)=0.
-         tttab(ip)=0.
+         del2W(ip)=0.
+         tt2W(ip)=0.
          do idep=1,ndep
-            if (deptab(idep).eq.0.) then ! surface ray hitting (0,0)
-               depxcor(ip,idep)=0.
-               deptcor(ip,idep)=0.
+            if (qdeptab(idep).eq.0.) then ! surface ray hitting (0,0)
+               qdepxcor(ip,idep)=0.
+               qdeptcor(ip,idep)=0.
             else                         ! surface ray does not reach this depth
-               depxcor(ip,idep)=-999.
-               deptcor(ip,idep)=-999.
+               qdepxcor(ip,idep)=-999.
+               qdeptcor(ip,idep)=-999.
             end if         
          enddo
 
@@ -385,17 +382,17 @@
          xold=-999. ! current x
          
          ! if source is at 0 depth, go skip the upgoing ray loop
-         if (deptab(idep).eq.0.) then
+         if (qdeptab(idep).eq.0.) then
             i2=nray ! start next loop here
             go to 223
          end if
          
          ! loop for upgoing rays from the source
          do i=1,nray                           ! loop from steep to shallow angles
-            x2=depxcor(i,idep)               ! offset at this source depth
+            x2=qdepxcor(i,idep)               ! offset at this source depth
             if (x2.eq.-999.) exit            ! stop when run out of x's
             if (x2.le.xold) exit             ! stop when ray heads inward
-            t2=deptcor(i,idep)               ! travel time to this depth
+            t2=qdeptcor(i,idep)               ! travel time to this depth
             icount=icount+1                  ! increment save index
             xsave(icount)=x2                 ! save offset from this depth to surface
             tsave(icount)=t2                 ! save travel time
@@ -407,10 +404,10 @@
          ! loop for downgoing rays from the source
 223      continue         
          do i=i2,1,-1                       ! loop from shallow to steep angles
-            if (depxcor(i,idep).eq.-999.) cycle ! skip
-            if (deltab(i).eq.-999.) cycle       ! skip
-            x2=deltab(i)-depxcor(i,idep)    ! source-surface offset is total offset minus offset from downgoing leg 
-            t2=tttab(i)-deptcor(i,idep)     ! same for source-surface travel time
+            if (qdepxcor(i,idep).eq.-999.) cycle ! skip
+            if (del2W(i).eq.-999.) cycle       ! skip
+            x2=del2W(i)-qdepxcor(i,idep)    ! source-surface offset is total offset minus offset from downgoing leg 
+            t2=tt2W(i)-qdeptcor(i,idep)     ! same for source-surface travel time
             icount=icount+1                 ! increment save index
             xsave(icount)=x2                ! save offset from this depth to surface
             tsave(icount)=t2                ! save p as postive for downgoing from source
@@ -420,7 +417,6 @@
          ! total count of data points saved
          ncount=icount
          
-         
          ! interpolate offsets to the desired spacing and find the first-arriving ray
          ndel = floor((del2+del3/10.-del1)/del3) + 1 ! (note, this value has been checked on input)
          
@@ -428,7 +424,7 @@
             
             ! get current offset
             deldel = del1 + (idel-1)*del3 ! current offset in km
-            delttab(idel)=deldel
+            sdeltab(idel)=deldel
             del=deldel
             if (itype.eq.2) del=deldel*kmdeg ! convert from km to degree, if desired
 
@@ -462,12 +458,12 @@
             if (tt(idel,idep).eq.99999.) tt(idel,idep)=0.    
             if (itype.eq.2) tt(idel,idep)=tt(idel,idep)/60.            
 
-         enddo                                    !end loop on offsets
+         enddo  !--------------- end loop on offsets
                   
-      enddo                                        !end loop on depth
+      enddo     !------------------ end loop on depth
 
 ! fix potential edge case
-      if ( (delttab(1).eq.0.) .and. (deptab(1).eq.0.) ) then
+      if ( (sdeltab(1).eq.0.) .and. (qdeptab(1).eq.0.) ) then
         tt(1,1)=0.                 !set tt to zero at (0,0)
       end if
 
@@ -477,17 +473,17 @@
      nx = ndel
      nz = ndep 
      do i = 1, nx
-       xtab(i) = del1 + (i-1)*del3
+       outX(i) = del1 + (i-1)*del3
        do j = 1, nz
-         ttab(i,j,iw) = tt(i,j)
+         outTT(i,j,iw) = tt(i,j)
        enddo
      enddo
      do j = 1, nz
-       ztab(j) = dep1 + (j-1)*dep3
+       outZ(j) = dep1 + (j-1)*dep3
      enddo
 
 
-!-------------- Make output files -----------------
+!-------------- Make output text file -----------------
 
 ! get file name from input
       print *,'Output file name for travel-time table:'
@@ -508,7 +504,7 @@
 408      format (2i5)
       
 !     third line: row of source depths
-      write (11,409) (deptab(j),j=1,ndep)
+      write (11,409) (qdeptab(j),j=1,ndep)
 409      format (8x,1000f9.1)
       
 !   fill in table:
@@ -517,9 +513,9 @@
 !       from a source at horizontal distance x_i and depth z_j
       do i=1,ndel
          if (itype.eq.1) then
-            write (11,410) delttab(i),(tt(i,j),j=1,ndep)
+            write (11,410) sdeltab(i),(tt(i,j),j=1,ndep)
          else
-            write (11,413) delttab(i),(tt(i,j),j=1,ndep)
+            write (11,413) sdeltab(i),(tt(i,j),j=1,ndep)
          end if
 
 410      format (1000f9.4)
