@@ -196,7 +196,7 @@
    params_ok = 1 ! input is ok unless problem is found
      
    ! check conparam
-   if ((conparam <= 0.0) .or. (conparam > 1.0) ) then
+   if ((conparam < 0.0) .or. (conparam > 1.0) ) then
      print *, 'grow_params.mod error: conparam'
      print *, conparam
      params_ok = 0
