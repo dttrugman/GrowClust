@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2020 Daniel Trugman
+! Copyright 2021 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
