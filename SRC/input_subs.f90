@@ -117,7 +117,7 @@
      input_ok = 0
    endif
 
-   ! travel time table size (hardwired to 501 x 201)
+   ! travel time table size
    ndel = floor((tt_del2+tt_del3/10.-tt_del1)/tt_del3) + 1
    ndep = floor((tt_dep2+tt_dep3/10.-tt_dep1)/tt_dep3) + 1
    if (ndel > nx0) then
@@ -344,7 +344,7 @@
     
     read (12, *, end=22) idcusp(i), qyr_cat(i), qmon_cat(i), qdy_cat(i), qhr_cat(i), & 
     qmn_cat(i), qsc_cat(i), qlat_cat(i), qlon_cat(i), qdep_cat(i), &
-    RMS_cat, EH_cat, qmag_cat(i)
+    RMS_cat, EH_cat, EZ_cat, qmag_cat(i)
     
     endif
     
