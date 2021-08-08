@@ -766,11 +766,11 @@
                            Number of event pairs used:      48430
                 Number of xcor data used (total, P+S):     559341
                    Number of xcor data used (P-phase):     315323
-             RMS differential time residual (P-phase):     0.1573
-   Mean (signed) differential time residual (P-phase):    -0.0172
+             RMS differential time residual (P-phase):     0.0708
+   Mean (signed) differential time residual (P-phase):    -0.0004
                    Number of xcor data used (S-phase):     244018
-             RMS differential time residual (S-phase):     0.1440
-   Mean (signed) differential time residual (S-phase):    -0.0132
+             RMS differential time residual (S-phase):     0.0244
+   Mean (signed) differential time residual (S-phase):     0.0009
   
                 Number of clusters with >=   2 events:         6
                 Number of clusters with >=   5 events:         2

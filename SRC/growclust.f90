@@ -857,11 +857,6 @@ program growclust
       endif
       if (i == 0 .or. j == 0) cycle
       if (i == j) cycle
-      
-      ! pair centroid
-      qlat0 = (qlat(i) + qlat(j))/2.
-      qlon0 = (qlon(i) + qlon(j))/2.
-      qdep0 = (qdep(i) + qdep(j))/2. 
            
 ! already in same tree, no need to relocate, right?                                             
       if (index(i) == index(j)) then  
@@ -870,6 +865,8 @@ program growclust
                   
 !possibly combine two different existing trees, note that either or both trees can be single events         
       else     
+
+
 
     ! first check to see how many good connections join clusters (if each tree has >1 event)
          if (nbranch(index(i)) > 1 .and. nbranch(index(j)) > 1) then      
@@ -898,7 +895,10 @@ program growclust
          end if
          
 ! then check to see if clusters are too far apart (recall the t-arrays are tree centroids)
-         cosqlat = cos(qlat0/degrad)
+         qlat0 = (qlat(i) + qlat(j))/2.
+         qlon0 = (qlon(i) + qlon(j))/2.
+         qdep0 = (qdep(i) + qdep(j))/2. 
+         cosqlat = cos(qlat0/degrad) ! from pair centroid
          dy = (tlat(index(i)) - tlat(index(j)))*degkm
          dx = (tlon(index(i)) - tlon(index(j)))*degkm*cosqlat
          dz = tdep(index(i)) - tdep(index(j))
@@ -1073,6 +1073,7 @@ program growclust
          cdep2 = (qdep1*nbranch_i + qdep2*nbranch_j)/real(nbranch_i + nbranch_j)
          
          ! if number events in cluster i is > nclustshiftmin, test if centroid moves too far
+         !  (accounting for possible DC offsets)
          if (nbranch_i >= nclustshiftmin) then
             dy = qlat1 - tlat(index(i)) - (clat2 - clat1)        !new loc - old loc
             dx = qlon1 - tlon(index(i)) - (clon2 - clon1)
@@ -1093,7 +1094,8 @@ program growclust
             
          endif
          
-         ! if number events in cluster j is > nclustshiftmin, test if centroid moves too far        
+         ! if number events in cluster j is > nclustshiftmin, test if centroid moves too far
+         !  (accounting for possible DC offsets)        
          if (nbranch_j >= nclustshiftmin) then
             dy = qlat2 - tlat(index(j)) - (clat2 - clat1)        !new loc - old loc
             dx = qlon2 - tlon(index(j)) - (clon2 - clon1)
@@ -1123,7 +1125,7 @@ program growclust
          qlat_off1 = qlat1 - tlat(index(i))         
          qlon_off1 = qlon1 - tlon(index(i))
          qdep_off1 = qdep1 - tdep(index(i))
-         qtim_off1 = torg(index(i)) - torgdif/2.     !***check this
+         qtim_off1 = torg(index(i)) - torgdif/2.     ! symmetric shift "backward" if positive
          if (abs(qtim_off1) > 50.) then
             print *, '***TIME ERROR6: ', qtim_off1, torg(index(i)), index(i), i
             print *, 'LARGE ORIGIN TIME CORRECTION, LIKELY XCOR DATA OR EVLIST PROBLEM.'
@@ -1135,7 +1137,7 @@ program growclust
          qlat_off2 = qlat2 - tlat(index(j))         !
          qlon_off2 = qlon2 - tlon(index(j))
          qdep_off2 = qdep2 - tdep(index(j))
-         qtim_off2 = torg(index(j)) + torgdif/2.     !***check this
+         qtim_off2 = torg(index(j)) + torgdif/2.     ! symmetric shift "forward" if positive
          if (abs(qtim_off2) > 50.) then
              print *, '***TIME ERROR7: ', qtim_off2, torg(index(j)), index(j), j
              print *, 'LARGE ORIGIN TIME CORRECTION, LIKELY XCOR DATA OR EVLIST PROBLEM.'
@@ -1483,8 +1485,8 @@ program growclust
             call GET_TT_FAST(ttab, deltab, deptab, ndel, ndep, &
                   ipp(k), distance, qdep(iq2), tsec2, iflag)
 
-            ! predicted differential time      
-            tdif_pred(k) = tsec2 - tsec1
+            ! predicted differential time (otime adjustment taken care of below)    
+            tdif_pred(k) = tsec2 - tsec1 
             
             ! check to see if this is a "good" pick
             if (dist(k) <= delmax .and. rxcor(k) >= rmin) then
@@ -1493,7 +1495,7 @@ program growclust
                 
                 ! store residual in P-residual array
                 jjP = jjP + 1
-                resP(jjP) = tdif(k)-tdif_pred(k)
+                resP(jjP) = tdif(k)-(qtim(iq2)-qtim(iq1))-tdif_pred(k) ! otime-adjusted (08/2021)
                 
                 npickgoodP = npickgoodP + 1  ! increment npickgood
                 prmsP = prmsP + (resP(jjP))**2 ! increment residual sum for the pair
@@ -1503,7 +1505,7 @@ program growclust
                 
                 ! store residual in P-residual array
                 jjS = jjS + 1
-                resS(jjS) = tdif(k)-tdif_pred(k)
+                resS(jjS) = tdif(k)-(qtim(iq2)-qtim(iq1))-tdif_pred(k) ! otime-adjusted (08/2021)
                 
                 npickgoodS = npickgoodS + 1  ! increment npickgood
                 prmsS = prmsS + (resS(jjS))**2 ! increment residual sum for the pair
@@ -1772,7 +1774,7 @@ endif
       
    do ii = 1, ntreeR
       if (nbranchtR(ii) < nbranch_min) cycle
-      write (13, 870) ii, nbranchtR(ii), tlatR(ii), tlonR(ii), tdepR(ii), torgR(ii)
+      write (13, 870) ii, nbranchtR(ii), tlatR(ii), tlonR(ii), tdepR(ii)-datum, torgR(ii) !08/2021 fixed datum adjustment
 870   format (i8, i8, f10.5, f11.5, f8.3, f8.3)
       do iq = 1, nq
       
