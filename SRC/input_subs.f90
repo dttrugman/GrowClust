@@ -960,7 +960,7 @@ end subroutine LOOKUP_STA
      
      
      ! read file, line by line
-     do j = 1, ndif0
+     do j = 1, 2*ndif0 ! edit 08/2021 b/c not all lines are good tdifs...
       read(14, '(a100)', end=52) linebuf 
 
       if(linebuf(1:1) .eq. '#') then ! ------------ event pair line --------------
