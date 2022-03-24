@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2021 Daniel Trugman
+! Copyright 2022 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -26,19 +26,18 @@
    MODULE grow_params
    
    ! ----------- Array size parameters ----------------------------------
-   integer, parameter :: nsta0=2500            !max number of stations
-   integer, parameter :: nq0=150000           !max number of quakes
+   integer, parameter :: nsta0=1000            !max number of stations
+   integer, parameter :: nq0=100000           !max number of quakes
    integer, parameter :: npair0=2000000        !max total number of event pairs
-   integer, parameter :: ntmax=150000           !maximum number of trees (clusters), normally should be same as nq0
-   integer, parameter :: nbmax=150000           !max number of events (branches) per tree, should be of order nq0
+   integer, parameter :: ntmax=100000           !maximum number of trees (clusters), normally should be same as nq0
+   integer, parameter :: nbmax=100000           !max number of events (branches) per tree, should be of order nq0
    integer, parameter :: n0=1000              !max number of differential times for each event pair
-   integer, parameter :: ndif0=10000000        !max total number of differential times
+   integer, parameter :: ndif0=15000000        !max total number of differential times
    integer, parameter :: n08 = 10000          !max number of diff. times for 10 event pairs
    integer, parameter :: maxboot = 100        ! max number of bootstrap resamples
    integer, parameter :: maxevid = 100000000 ! maximum event id number
 
     ! ------- GrowClust algorithm control parameters -------------------------------
-   real, parameter    :: conparam = 0.001        ! minimum connection fraction to join clusters (usually a small number is fine)
    real, parameter    :: distmax = 5.0          ! maximum catalog(input) distance to join clusters (km)
    real, parameter    :: distmax2 = 3.0         ! maximum relocated distance to join clusters (km)
    integer, parameter :: nclustshiftmin = 1    ! minimum number of events in cluster to apply cluster shift test

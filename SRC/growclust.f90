@@ -1,5 +1,5 @@
 !-----------------------------------------------------------------------
-! Copyright 2021 Daniel Trugman
+! Copyright 2022 Daniel Trugman
 !
 ! This file is part of GrowClust.
 !
@@ -80,7 +80,7 @@ program growclust
 ! variables to store xcor file data
    integer, dimension(npair0) :: idcusp11, idcusp22, index1, index2, iqq1, iqq2
    integer, dimension(ndif0) :: ipp
-   real, dimension(ndif0) :: rxcor, tdif, dist, selev
+   real, dimension(ndif0) :: rxcor, tdif, dist
    real(dp), dimension(ndif0) :: slat, slon
    !character (len=12), dimension(ndif0) :: stname
    character (len=5), dimension(ndif0) :: stname
@@ -121,7 +121,7 @@ program growclust
    integer, dimension(npair0) :: idcusp1100, idcusp2200
    integer, dimension(npair0) :: index100, index200, iqq100, iqq200
    integer, dimension(ndif0) :: ipp00
-   real, dimension(ndif0) :: rxcor00, tdif00, dist00, selev00
+   real, dimension(ndif0) :: rxcor00, tdif00, dist00
    real(dp), dimension(ndif0) :: slat00, slon00
 
 ! variables for resampling
@@ -315,7 +315,7 @@ program growclust
       tt_del0, tt_del1, tt_ddel, rmsmax, delmax, iponly, nboot, maxboot, nx0, nd0)
 
 ! call subroutine to check grow_params module for errors
-    call PARAM_CHECK(conparam, hshiftmax, vshiftmax, rmedmax, boxwid, nit, samp_type, irelonorm, vzmodel_type) 
+    call PARAM_CHECK(hshiftmax, vshiftmax, rmedmax, boxwid, nit, samp_type, irelonorm, vzmodel_type) 
     
      print *, '--------------------------------------------------'
      print *, ' '
@@ -379,7 +379,7 @@ program growclust
 
     ! READ_XCORDATA: Reads xcor data and associated station locations
     ! -- output event pair arrays: iqq1, iqq2, idcusp11, idcusp22, index1, index2
-    ! -- output tdif/phase arrays: stname, ipp, tdif, rxcor, dist, slat, slon, selev
+    ! -- output tdif/phase arrays: stname, ipp, tdif, rxcor, dist, slat, slon
     print *, ' '
     !print *, 'Reading xcor data...'
     call TIMER
@@ -387,7 +387,7 @@ program growclust
      qid2qnum, qlat, qlon, rmincut, rmin, delmax, rpsavgmin, iponly, ngoodmin, & 
      nsta, slnames, sllats, sllons, slelevs,slkeys, &
      npair, nk, iqq1, iqq2, idcusp11, idcusp22, index1, index2, &
-     stname, ipp, tdif, rxcor, dist, slat, slon, selev)
+     stname, ipp, tdif, rxcor, dist, slat, slon)
     call TIMER
      
   ! for robustness, final check to make sure nq, npair, nk are not too large (edit 11/2016)
@@ -428,7 +428,6 @@ program growclust
       ipp00(k) = ipp(k)
       slat00(k) = slat(k)
       slon00(k) = slon(k)
-      selev00(k) = selev(k)
       tdif00(k) = tdif(k)
       rxcor00(k) = rxcor(k)
       dist00(k) = dist(k)
@@ -602,7 +601,6 @@ program growclust
    write(16, '(a56, f6.2)') ' (max rms residual to join clusters): rmsmax =', rmsmax
    write (16, '(a56, i6)' ) ' (num. bootstrap uncertainty iterations): nboot =', nboot
    write(16, *) '**************** Auxiliary Run Parameters *******************'
-   write(16, '(a56, f6.4)') ' min connection fraction to join clusters: ', conparam 
    write(16, '(a56, f6.2)') ' max catalog dist to join clusters: ', distmax
    write(16, '(a56, f6.2)') ' max relocated dist to join clusters: ', distmax2
    write(16, '(a56, i6)') ' min number in cluster to apply shift test: ', nclustshiftmin
@@ -785,7 +783,6 @@ program growclust
         call RESAMPLE_FDATAVEC(rxcor00(1:nk), rxcor(1:nk), samp_vec(1:nk), nk)
         call RESAMPLE_DFDATAVEC(slon00(1:nk), slon(1:nk), samp_vec(1:nk), nk)
         call RESAMPLE_DFDATAVEC(slat00(1:nk), slat(1:nk), samp_vec(1:nk), nk)
-        !call RESAMPLE_FDATAVEC(selev00(1:nk), selev(1:nk), samp_vec(1:nk), nk) ! not currently used
    
        !------- compute event pair quality (similarity) factors for resampled data ------!
        iqmax = 0 
@@ -865,36 +862,8 @@ program growclust
                   
 !possibly combine two different existing trees, note that either or both trees can be single events         
       else     
-
-
-
-    ! first check to see how many good connections join clusters (if each tree has >1 event)
-         if (nbranch(index(i)) > 1 .and. nbranch(index(j)) > 1) then      
-            
-            ! find total number of pairs linking cluster
-            nconnect=0         
-            do k = 1, npair
-               if (rfactor(k) < 0.0) cycle             !**added to make robust            
-               if (ngood(k) < ngoodmin) cycle
-               ii = iqq1(k)     
-               jj = iqq2(k)
-               if ((index(ii) == index(i) .and. index(jj) == index(j)) .or. &
-                  (index(jj) == index(i) .and. index(ii) == index(j)) ) then
-                  nconnect = nconnect + 1
-               endif
-            enddo
          
-            ntot = nbranch(index(i))*nbranch(index(j))    !total possible number of connections (nbranch_i*nbranch_j)
-            frac = real(nconnect)/real(ntot) ! fraction of total
-            
-        ! if fraction too small --> not enough good connections (don't join clusters/relocate)
-            if (frac < conparam) then
-!               print *, 'not joining two clusters ', nconnect, ntot, frac
-               cycle                 
-            endif
-         end if
-         
-! then check to see if clusters are too far apart (recall the t-arrays are tree centroids)
+! check to see if clusters are too far apart (recall the t-arrays are tree centroids)
          qlat0 = (qlat(i) + qlat(j))/2.
          qlon0 = (qlon(i) + qlon(j))/2.
          qdep0 = (qdep(i) + qdep(j))/2. 
@@ -911,7 +880,7 @@ program growclust
          npr8 = 0           ! number of good pairs linking clusters
          npk8 = 0           ! total number of differential times for these pairs
          
-         ! loop over all observations (starting w/ best xcor results)
+         ! loop over all remaining observations (sorted by rxcor)
          do kraw8 = kraw, 1, -1
             ip8 = indxr(kraw8)
             if (rfactor(ip8) < 0.0) cycle       !***added to make robust            

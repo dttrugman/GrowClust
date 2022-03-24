@@ -43,7 +43,7 @@ TT/tt.sg
 ***** Travel Time Table Parameters  ******
 ******************************************
 * vpvs_factor  rayparam_min (-1 = default)
-  1.732             -1
+  1.732             0.0
 * tt_dep0  tt_dep1  tt_ddep
    0.        26.       1.
 * tt_del0  tt_del1  tt_ddel
@@ -61,7 +61,7 @@ TT/tt.sg
 ************ Output files ****************
 ******************************************
 * nboot  nbranch_min
-   10         1
+   0         1
 * fout_cat (relocated catalog)
 OUT/out.growclust_cat
 * fout_clust (relocated cluster file)
