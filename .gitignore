@@ -1,3 +1,6 @@
 EXAMPLE/plot_reloc.py
 EXAMPLE/FIGS/*
 EXAMPLE/FIGS
+.DS_Store
+*/.DS_Store
+*/*/.DS_Store
