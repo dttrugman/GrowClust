@@ -8,9 +8,9 @@ CMD = growclust
 
 # compiler flags for f90 codes
 #  (use -O for optimization)
-#  (use -O -mcmodel=medium or -O -mcmodel=large for large datasets)
+#  (use -O -mcmodel=medium or -O -mcmodel=large for large datasets - not sure if this works on M1 mac...)
 #  (use -fcheck=bounds for testing)
-CFLAGS = -O -mcmodel=medium
+CFLAGS = -O
 #CFLAGS = -Wall -fcheck=bounds -mcmodel=medium
 
 # object files to link to command file

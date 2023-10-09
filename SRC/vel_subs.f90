@@ -336,7 +336,8 @@
          
             ! save current x,t,u for ray sampling source depths (stored in deptab)
              do idep=1,ndep
-                if (abs(z_s(i+1)-qdeptab(idep)).lt.dep3/10.) then
+                !if (abs(z_s(i+1)-qdeptab(idep)).lt.dep3/10.) then
+                if (abs(z_s(i+1)-qdeptab(idep)).lt.dep3/1.99) then ! update 10/2023
                    qdepxcor(ip,idep)=x
                    qdeptcor(ip,idep)=t
                 end if
