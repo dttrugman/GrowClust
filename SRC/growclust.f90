@@ -536,9 +536,8 @@ program growclust
       ngood(ip) = 0
       rfactor(ip) = -1.                          !***stays at -1 if 'bad' pair      
       
-      if (index2(ip)-index1(ip) <= 1) cycle         !****added to make more robust
-      if (index1(ip) <= 1) cycle
-      if (index2(ip) <= 1) cycle     
+      if (index2(ip)-index1(ip) < 0) cycle        !****added to make more robust
+      if (index1(ip) < 1) cycle                   ! bug fixed 10/2024
             
       rgoodavg = 0.
       
